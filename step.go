@@ -25,8 +25,6 @@ var _ Step[any] = (*StepFunc[any])(nil)
 // branch selector for Step(s).
 type Selector[S any] func(state S) bool
 
-type StepErrorHandler[S any] func(ctx context.Context, state S, err error) Step[S]
-
 type ifStep[S any] struct {
 	condition Selector[S]
 	thenStep  Step[S]
@@ -85,49 +83,6 @@ func (s *ifElseStep[S]) Unwrap() []Step[S] { return []Step[S]{s.thenStep, s.else
 //   - executes the elseStep, if the Selector returns false
 func IfElse[S any](condition Selector[S], thenStep, elseStep Step[S]) Step[S] {
 	return &ifElseStep[S]{condition: condition, thenStep: thenStep, elseStep: elseStep}
-}
-
-type resultStep[S any] struct {
-	mainStep       Step[S]
-	successStep    Step[S]
-	failureHandler StepErrorHandler[S]
-}
-
-var _ middlewareSkipper = (*resultStep[any])(nil)
-
-func (s *resultStep[S]) canSkip() bool {
-	return true
-}
-
-func (s *resultStep[S]) Exec(ctx context.Context, state S) error {
-	if err := execWithContext(ctx, s.mainStep, state); err != nil {
-		return execWithContext(ctx, s.failureHandler(ctx, state, err), state)
-	}
-
-	return execWithContext(ctx, s.successStep, state)
-}
-
-func (s *resultStep[S]) Unwrap() []Step[S] {
-	return []Step[S]{
-		s.mainStep,
-		s.successStep,
-		// TODO: Make failure handler a part of the DAG, update Unwrap to return it.
-	}
-}
-
-// Result Step executes the mainStep and uses the returned value to
-//   - execute successStep, if the returned error is nil
-//   - call failureHandler to execute returned step, if the returned error is not nil
-//
-// Note: It is recommended to make sure that the Step returned by
-// failureHandler does not contain any cycles, use New on all possible
-// return Step(s) to assert it in unit tests.
-func Result[S any](mainStep, successStep Step[S], failureHandler StepErrorHandler[S]) Step[S] {
-	return &resultStep[S]{
-		mainStep:       mainStep,
-		successStep:    successStep,
-		failureHandler: failureHandler,
-	}
 }
 
 type seriesStep[S any] struct {

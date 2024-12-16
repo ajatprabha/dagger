@@ -67,38 +67,6 @@ func TestIfElse(t *testing.T) {
 	assert.Equal(t, 3, count)
 }
 
-func TestResult(t *testing.T) {
-	t.Run("SuccessBranch", func(t *testing.T) {
-		success, failure := 0, 0
-
-		ss := NewStep(func(ctx context.Context, state testState) error { success++; return nil })
-		fs := NewStep(func(ctx context.Context, state testState) error { failure++; return nil })
-		ms := NewStep(func(ctx context.Context, state testState) error { return nil })
-
-		err := Result(ms, ss, func(ctx context.Context, state testState, err error) Step[testState] {
-			return fs
-		}).Exec(context.TODO(), testState{})
-		assert.NoError(t, err)
-		assert.Equal(t, 1, success)
-		assert.Equal(t, 0, failure)
-	})
-
-	t.Run("FailureBranch", func(t *testing.T) {
-		success, failure := 0, 0
-
-		ss := NewStep(func(ctx context.Context, state testState) error { success++; return nil })
-		fs := NewStep(func(ctx context.Context, state testState) error { failure++; return nil })
-		ms := NewStep(func(ctx context.Context, state testState) error { return testErrStep })
-
-		err := Result(ms, ss, func(ctx context.Context, state testState, err error) Step[testState] {
-			return fs
-		}).Exec(context.TODO(), testState{})
-		assert.NoError(t, err)
-		assert.Equal(t, 0, success)
-		assert.Equal(t, 1, failure)
-	})
-}
-
 func TestSeries(t *testing.T) {
 	appendStepIn := func(res *[]string) func(string) Step[testState] {
 		return func(name string) Step[testState] {
@@ -209,9 +177,7 @@ func Test_canSkip(t *testing.T) {
 			step: Result(
 				NewStep(func(context.Context, testState) error { return nil }),
 				NewStep(func(context.Context, testState) error { return nil }),
-				func(context.Context, testState, error) Step[testState] {
-					return NewStep(func(context.Context, testState) error { return nil })
-				},
+				NewStep(func(context.Context, testState) error { return nil }),
 			),
 		},
 		{
