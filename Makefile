@@ -1,6 +1,7 @@
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 LOCAL_GO_BIN_DIR := $(PROJECT_DIR)/.bin
 BIN_DIR := $(if $(LOCAL_GO_BIN_DIR),$(LOCAL_GO_BIN_DIR),$(GOPATH)/bin)
+GO_MINOR_VERSION := $(shell go version | cut -d' ' -f3 | cut -d'.' -f2)
 
 fmt:
 	@go fmt ./...
@@ -40,8 +41,15 @@ test-xml: test-cov gocov-xml
 
 # ========= Helpers ===========
 
+## Determine the golangci-lint version based on $(GO_MINOR_VERSION)
+GOLANGCI_LINT_V22 := v1.59.1
+GOLANGCI_LINT_DEFAULT := v1.62.1
+
+get-golangci-lint-version = $(or $(value GOLANGCI_LINT_V$(1)), $(GOLANGCI_LINT_DEFAULT))
+GOLANGCI_LINT_VERSION := $(call get-golangci-lint-version,$(GO_MINOR_VERSION))
+
 golangci-lint:
-	$(call install-if-needed,GOLANGCI_LINT,github.com/golangci/golangci-lint/cmd/golangci-lint,v1.62.2)
+	$(call install-if-needed,GOLANGCI_LINT,github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 gci:
 	$(call install-if-needed,GCI_BIN,github.com/daixiang0/gci,v0.13.5)
