@@ -97,7 +97,7 @@ func ExampleResult() {
 	reportFailure := func(ctx context.Context, state exampleState) error { return nil }
 
 	// Tip: Create a type alias like this to avoid using go generic syntax everywhere.
-	type exampleStateStep = dagger.Step[exampleState]
+	// type exampleStateStep = dagger.Step[exampleState]
 
 	dag, err := dagger.New(
 		dagger.Result(
@@ -106,16 +106,7 @@ func ExampleResult() {
 			// It will then run the success Step, if main Step returned no error
 			dagger.NewStep(reportSuccess),
 			// Otherwise, it will run the success Step, if main Step returned an error
-			func(ctx context.Context, state exampleState, err error) exampleStateStep {
-				// Note: It is encouraged to test that `failureProcedure` has no cycles
-				// via unit tests.
-				// ```go
-				// _, err := dagger.New(failureProcedure)
-				// assertNoError(err)
-				// ```
-				failureProcedure := dagger.NewStep(reportFailure)
-				return failureProcedure
-			},
+			dagger.NewStep(reportFailure),
 		),
 	)
 	if err != nil {

@@ -11,7 +11,6 @@ import (
 
 func TestExecutor_Use(t *testing.T) {
 	type useState struct{ indent int }
-	type useStep = Step[useState]
 
 	validateResource := func(ctx context.Context, state useState) error { return nil }
 	createResource := func(ctx context.Context, state useState) error { return nil }
@@ -26,9 +25,7 @@ func TestExecutor_Use(t *testing.T) {
 				Result(
 					NewStep(createResource),
 					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					NewStep(reportFailure),
 				),
 			),
 		)
@@ -70,9 +67,7 @@ dagger:seriesStep[useState·1]
 				Result(
 					NewStep(createResource),
 					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					NewStep(reportFailure),
 				),
 				Series(
 					If(
@@ -125,11 +120,11 @@ dagger:TestExecutor_Use.func1
 dagger:TestExecutor_Use.func3
 	dagger:TestExecutor_Use.func2
 	dagger:TestExecutor_Use.func3
-		dagger:TestExecutor_Use.func6.3
-		dagger:TestExecutor_Use.func6.5
-		dagger:TestExecutor_Use.func6.7
+		dagger:TestExecutor_Use.func6.2
+		dagger:TestExecutor_Use.func6.4
+		dagger:TestExecutor_Use.func6.6
+	dagger:TestExecutor_Use.func6.8
 	dagger:TestExecutor_Use.func6.9
-	dagger:TestExecutor_Use.func6.10
 `, buf.String())
 	})
 
@@ -141,9 +136,7 @@ dagger:TestExecutor_Use.func3
 				Result(
 					NewStep(createResource),
 					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					NewStep(reportFailure),
 				),
 			),
 		)
@@ -210,11 +203,9 @@ func Test_buildDAG(t *testing.T) {
 	step4 := NewStep(publishKafka)
 	step5 := NewStep(updateDB)
 	resultStep := &resultStep[dummyState]{
-		mainStep:    step2,
-		successStep: step3,
-		failureHandler: func(ctx context.Context, state dummyState, err error) Step[dummyState] {
-			return step4
-		},
+		mainStep:       step2,
+		successStep:    step3,
+		failureHandler: step4,
 	}
 
 	rootStep := &ifElseStep[dummyState]{

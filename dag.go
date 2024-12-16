@@ -80,6 +80,7 @@ func checkDAGRecursive[S any](step Step[S], visited map[string]struct{}) error {
 
 	visited[ptr] = struct{}{}
 
+	// TODO: Handle stepWithErr
 	switch s := step.(type) {
 	case interface{ Unwrap() Step[S] }:
 		return checkDAGRecursive(s.Unwrap(), visited)
