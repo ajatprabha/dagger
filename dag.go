@@ -80,17 +80,23 @@ func checkDAGRecursive[S any](step Step[S], visited map[string]struct{}) error {
 
 	visited[ptr] = struct{}{}
 
-	switch s := step.(type) {
-	case interface{ Unwrap() Step[S] }:
-		return checkDAGRecursive(s.Unwrap(), visited)
-	case interface{ Unwrap() []Step[S] }:
-		for _, childStep := range s.Unwrap() {
-			if err := checkDAGRecursive(childStep, visited); err != nil {
-				return err
-			}
+	for _, childStep := range unwrapper[S](step) {
+		if err := checkDAGRecursive(childStep, visited); err != nil {
+			return err
 		}
 	}
 
 	delete(visited, ptr)
 	return nil
+}
+
+func unwrapper[S any](step any) []Step[S] {
+	switch s := step.(type) {
+	case interface{ Unwrap() Step[S] }:
+		return []Step[S]{s.Unwrap()}
+	case interface{ Unwrap() []Step[S] }:
+		return s.Unwrap()
+	default:
+		return nil
+	}
 }

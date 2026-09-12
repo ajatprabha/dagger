@@ -8,12 +8,15 @@ import (
 	"strings"
 )
 
-// StepNamer is the authoritative provider of a step's name.
+// Namer is the authoritative provider of a step's name.
 // It can be used to inspect a step's name even if the step is wrapped
 // with a middleware step.
-type StepNamer interface {
+type Namer interface {
 	StepName() fmt.Stringer
 }
+
+// StepNamer is an alias for Namer.
+type StepNamer = Namer
 
 // ScopedName holds the package name and function name of the StepFunc.
 type ScopedName [2]string
@@ -64,7 +67,7 @@ func (s GenericScopedName) String() string {
 // to naming the Step.
 func StepName[S any](s Step[S]) fmt.Stringer {
 	switch s := s.(type) {
-	case StepNamer:
+	case Namer:
 		return s.StepName()
 	case interface{ StepName() string }:
 		return fmtStr(s.StepName())
@@ -162,6 +165,10 @@ func stepFuncName[S any](s Step[S]) (string, string) {
 
 func stepTypeName[S any](s Step[S]) fmt.Stringer {
 	t := reflect.TypeOf(s)
+
+	if t == nil {
+		return fmtStr("nil")
+	}
 
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()

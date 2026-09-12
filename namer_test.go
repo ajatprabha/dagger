@@ -10,57 +10,57 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func namedStep(_ context.Context, _ testState) error { return nil }
+func namedStep(_ context.Context, _ struct{}) error { return nil }
 
 type testStep struct{}
 type unknownStep struct{}
 
-func (s *testStep) StepName() string                                      { return "testStep" }
-func (s *testStep) Exec(_ context.Context, _ testState) error             { return nil }
-func (s *unknownStep) Exec(_ context.Context, _ testState) error          { return nil }
-func (s *unknownStep) internalStep1(_ context.Context, _ testState) error { return nil }
-func (s unknownStep) internalStep2(_ context.Context, _ testState) error  { return nil }
+func (s *testStep) StepName() string                                     { return "testStep" }
+func (s *testStep) Exec(_ context.Context, _ struct{}) error             { return nil }
+func (s *unknownStep) Exec(_ context.Context, _ struct{}) error          { return nil }
+func (s *unknownStep) internalStep1(_ context.Context, _ struct{}) error { return nil }
+func (s unknownStep) internalStep2(_ context.Context, _ struct{}) error  { return nil }
 
 func TestStepName(t *testing.T) {
 	testcases := []struct {
 		name string
-		step func() Step[testState]
+		step func() Step[struct{}]
 		want string
 	}{
 		{
 			name: "UnknownStep",
-			step: func() Step[testState] { return &unknownStep{} },
+			step: func() Step[struct{}] { return &unknownStep{} },
 			want: "dagger:unknownStep",
 		},
 		{
 			name: "UnknownInternalStepPointerReceiver",
-			step: func() Step[testState] {
+			step: func() Step[struct{}] {
 				return NewStep((&unknownStep{}).internalStep1)
 			},
 			want: "dagger:*unknownStep.internalStep1",
 		},
 		{
 			name: "UnknownInternalStepValueReceiver",
-			step: func() Step[testState] {
+			step: func() Step[struct{}] {
 				return NewStep(unknownStep{}.internalStep2)
 			},
 			want: "dagger:unknownStep.internalStep2",
 		},
 		{
 			name: "AnonymousFunction",
-			step: func() Step[testState] {
-				return NewStep(func(_ context.Context, _ testState) error { return nil })
+			step: func() Step[struct{}] {
+				return NewStep(func(_ context.Context, _ struct{}) error { return nil })
 			},
 			want: "dagger:TestStepName.func4.1",
 		},
 		{
 			name: "NamedFunction",
-			step: func() Step[testState] { return NewStep(namedStep) },
+			step: func() Step[struct{}] { return NewStep(namedStep) },
 			want: "dagger:namedStep",
 		},
 		{
 			name: "StepNameMethod",
-			step: func() Step[testState] { return &testStep{} },
+			step: func() Step[struct{}] { return &testStep{} },
 			want: "testStep",
 		},
 	}
@@ -84,31 +84,33 @@ func Test_stepTypeName(t *testing.T) {
 
 		assert.True(t, ok)
 		assert.Equal(t, thisModule, gsn.StepScopedName().Module())
-		assert.Empty(t, gsn.TypeScopedName().Module())
+		assert.Empty(t, gsn.TypeScopedName().PackagePath())
 		assert.Equal(t, "int", gsn.TypeScopedName().String())
 		assert.Equal(t, "dagger:typedStep[int]", s.String())
 	})
 
 	t.Run("SamePackageTypedStep", func(t *testing.T) {
-		s := StepName(&typedStep[testState]{})
+		type ctxMarker int
+		s := StepName(&typedStep[ctxMarker]{})
 		gsn, ok := s.(GenericScopedName)
 
 		assert.True(t, ok)
 		assert.Equal(t, thisModule, gsn.StepScopedName().Module())
 		assert.Equal(t, thisModule, gsn.TypeScopedName().Module())
 		assert.Equal(t, "dagger", gsn.TypeScopedName().Package())
-		assert.Equal(t, "dagger:typedStep[testState]", s.String())
+		assert.Equal(t, "dagger:typedStep[ctxMarker·2]", s.String())
 	})
 
 	t.Run("SamePackageTypedPointerStep", func(t *testing.T) {
-		s := StepName(&typedStep[*testState]{})
+		type ctxMarker int
+		s := StepName(&typedStep[*ctxMarker]{})
 		gsn, ok := s.(GenericScopedName)
 
 		assert.True(t, ok)
 		assert.Equal(t, thisModule, gsn.StepScopedName().Module())
 		assert.Equal(t, thisModule, gsn.TypeScopedName().Module())
 		assert.Equal(t, "dagger", gsn.TypeScopedName().Package())
-		assert.Equal(t, "dagger:typedStep[*testState]", s.String())
+		assert.Equal(t, "dagger:typedStep[*ctxMarker·3]", s.String())
 	})
 
 	t.Run("DifferentPackageTypedStep", func(t *testing.T) {
@@ -142,7 +144,7 @@ func (s *namedTypedStep[S]) StepName() fmt.Stringer {
 
 func (s *namedTypedStep[S]) Exec(_ context.Context, _ S) error { return nil }
 
-func TestStepNamer(t *testing.T) {
+func TestNamer(t *testing.T) {
 	step := &namedTypedStep[int]{}
 	assert.Equal(t, "namedTypedStep[int]", StepName(step).String())
 }

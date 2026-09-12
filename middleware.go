@@ -8,7 +8,7 @@ type middleware[S any] interface {
 	apply(next Step[S], info Info) Step[S]
 }
 
-type middlewareSkipper interface{ canSkip() bool }
+type middlewareSkipper interface{ CanSkipMiddleware() bool }
 
 // Info contains information about the Step.
 type Info struct {
@@ -31,6 +31,8 @@ type MiddlewareChain[S any] []middleware[S]
 func (mwf MiddlewareFunc[S]) apply(next Step[S], info Info) Step[S] {
 	return mwf(next, info)
 }
+
+func (mwf MiddlewareFunc[S]) Wrap(s Step[S]) Step[S] { return mwf.apply(s, stepInfo(s)) }
 
 func (mwc MiddlewareChain[S]) apply(next Step[S], info Info) Step[S] {
 	for i := len(mwc) - 1; i >= 0; i-- {
@@ -64,7 +66,7 @@ func stepInfo[S any](s Step[S]) Info {
 func canSkip[S any](s Step[S]) bool {
 	skipper, ok := s.(middlewareSkipper)
 	if ok {
-		return skipper.canSkip()
+		return skipper.CanSkipMiddleware()
 	}
 
 	return false
