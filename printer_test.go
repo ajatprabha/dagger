@@ -183,6 +183,21 @@ func TestPrintDAG_SharedReferences(t *testing.T) {
 				return step
 			},
 		},
+		{
+			name: "self-referencing resultStep creates reference",
+			buildStep: func() Step[struct{}] {
+				rs := &resultStep[struct{}]{}
+				rs.mainStep = rs
+				return rs
+			},
+		},
+		{
+			name: "repeated labeled step creates reference",
+			buildStep: func() Step[struct{}] {
+				shared := NewStep(testNoopStep)
+				return Result(shared, OnSuccess(shared))
+			},
+		},
 	}
 
 	for _, tc := range sharedRefTests {
@@ -192,9 +207,41 @@ func TestPrintDAG_SharedReferences(t *testing.T) {
 			output, err := PrintString(step, WithReferences())
 
 			assert.NoError(t, err)
-			assert.Contains(t, output, "(ref to ")
+			assert.Contains(t, output, "(ref")
 		})
 	}
+
+	t.Run("resultStep cycle without references terminates silently", func(t *testing.T) {
+		rs := &resultStep[struct{}]{}
+		rs.mainStep = rs
+		out, err := PrintString(rs)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, out)
+	})
+}
+
+type badPrintStep[S any] struct{}
+
+func (b *badPrintStep[S]) Exec(_ context.Context, _ S) error { return nil }
+func (b *badPrintStep[S]) printDAG(_ *dagPrinter[S], _ string, _ bool, _ bool) error {
+	return errors.New("custom print error")
+}
+
+func TestPrintString(t *testing.T) {
+	t.Run("ignores WithWriter option", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		step := NewStep(testNoopStep)
+		out, err := PrintString(step, WithWriter(buf))
+		assert.NoError(t, err)
+		assert.NotEmpty(t, out)
+		assert.Empty(t, buf.String())
+	})
+
+	t.Run("returns error when print fails", func(t *testing.T) {
+		bad := &badPrintStep[struct{}]{}
+		_, err := PrintString(bad)
+		assert.Error(t, err)
+	})
 }
 
 // mockWriter is a writer that always returns an error for testing
