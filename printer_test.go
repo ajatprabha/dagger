@@ -158,8 +158,7 @@ dagger:seriesStep[struct {}]
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			actualOutput, err := PrintString(tc.startStep)
-			assert.NoError(t, err)
+			actualOutput := PrintString(tc.startStep)
 			assert.Equal(t, tc.expectedOutput[1:], actualOutput)
 		})
 	}
@@ -204,9 +203,7 @@ func TestPrintDAG_SharedReferences(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			step := tc.buildStep()
 
-			output, err := PrintString(step, WithReferences())
-
-			assert.NoError(t, err)
+			output := PrintString(step, WithReferences())
 			assert.Contains(t, output, "(ref")
 		})
 	}
@@ -214,70 +211,19 @@ func TestPrintDAG_SharedReferences(t *testing.T) {
 	t.Run("resultStep cycle without references terminates silently", func(t *testing.T) {
 		rs := &resultStep[struct{}]{}
 		rs.mainStep = rs
-		out, err := PrintString(rs)
-		assert.NoError(t, err)
+		out := PrintString(rs)
 		assert.NotEmpty(t, out)
 	})
-}
-
-type badPrintStep[S any] struct{}
-
-func (b *badPrintStep[S]) Exec(_ context.Context, _ S) error { return nil }
-func (b *badPrintStep[S]) printDAG(_ *dagPrinter[S], _ string, _ bool, _ bool) error {
-	return errors.New("custom print error")
 }
 
 func TestPrintString(t *testing.T) {
 	t.Run("ignores WithWriter option", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		step := NewStep(testNoopStep)
-		out, err := PrintString(step, WithWriter(buf))
-		assert.NoError(t, err)
+		out := PrintString(step, WithWriter(buf))
 		assert.NotEmpty(t, out)
 		assert.Empty(t, buf.String())
 	})
-
-	t.Run("returns error when print fails", func(t *testing.T) {
-		bad := &badPrintStep[struct{}]{}
-		_, err := PrintString(bad)
-		assert.Error(t, err)
-	})
-}
-
-// mockWriter is a writer that always returns an error for testing
-type mockWriter struct {
-	errorAfter int
-	written    int
-}
-
-func (m *mockWriter) Write(p []byte) (n int, err error) {
-	m.written += len(p)
-	if m.written >= m.errorAfter {
-		return 0, errors.New("mock write error")
-	}
-	return len(p), nil
-}
-
-func TestPrintDAG_WriterErrors(t *testing.T) {
-	tests := []struct {
-		name      string
-		startStep Step[struct{}]
-	}{
-		{
-			name:      "writer error during printing",
-			startStep: NewStep(func(_ context.Context, _ struct{}) error { return nil }),
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			mockW := &mockWriter{errorAfter: 10}
-			err := Print(tc.startStep, WithWriter(mockW))
-
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "mock write error")
-		})
-	}
 }
 
 func TestPrintDAG_NilStep(t *testing.T) {
@@ -295,9 +241,7 @@ func TestPrintDAG_NilStep(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := PrintString(tc.step)
-
-			assert.NoError(t, err)
+			out := PrintString(tc.step)
 			assert.Equal(t, tc.expectedOutput, out)
 		})
 	}
@@ -320,13 +264,11 @@ func TestPrint_ResultStepFormatting(t *testing.T) {
 			visited: make(map[string]bool),
 		}
 
-		err := dp.printWithLabel(main, "", false, " [main]")
-		assert.NoError(t, err)
+		dp.printWithLabel(main, "", false, " [main]")
 
 		rs, ok := step.(*resultStep[struct{}])
 		assert.True(t, ok)
-		err = rs.printDAG(dp, "", true, false)
-		assert.NoError(t, err)
+		rs.printDAG(dp, "", true, false)
 		assert.NotEmpty(t, buf.String())
 	})
 }
@@ -335,30 +277,34 @@ func TestPrintOptions(t *testing.T) {
 	step := Series(NewStep(testNoopStep), NewStep(testElseErrStep))
 
 	t.Run("WithCompactSymbols", func(t *testing.T) {
-		out, err := PrintString(step, WithCompactSymbols())
-		assert.NoError(t, err)
+		out := PrintString(step, WithCompactSymbols())
 		assert.Contains(t, out, "|- ")
 		assert.Contains(t, out, "`- ")
 	})
 
 	t.Run("WithSymbols", func(t *testing.T) {
-		out, err := PrintString(step, WithSymbols("+-- ", "\\-- ", "|   ", "    "))
-		assert.NoError(t, err)
+		out := PrintString(step, WithSymbols("+-- ", "\\-- ", "|   ", "    "))
 		assert.Contains(t, out, "+-- ")
 		assert.Contains(t, out, "\\-- ")
 	})
 
 	t.Run("WithIndent", func(t *testing.T) {
-		out, err := PrintString(step, WithIndent("  "))
-		assert.NoError(t, err)
+		out := PrintString(step, WithIndent("  "))
 		assert.NotEmpty(t, out)
 	})
 
 	t.Run("WithoutLabels", func(t *testing.T) {
 		resStep := Result(NewStep(testNoopStep), OnSuccess(NewStep(testNoopStep)))
-		out, err := PrintString(resStep, WithoutLabels())
-		assert.NoError(t, err)
+		out := PrintString(resStep, WithoutLabels())
 		assert.NotContains(t, out, "[main]")
 		assert.NotContains(t, out, "[success]")
 	})
+}
+
+func TestPrint(t *testing.T) {
+	buf := &bytes.Buffer{}
+	step := NewStep(testNoopStep)
+	err := Print(step, WithWriter(buf))
+	assert.NoError(t, err)
+	assert.NotEmpty(t, buf.String())
 }

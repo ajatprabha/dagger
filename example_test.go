@@ -304,11 +304,7 @@ func ExamplePrintString() {
 		dagger.NewStep(func(ctx context.Context, state exampleState) error { return nil }),
 	)
 
-	out, err := dagger.PrintString(step)
-	if err != nil {
-		panic(err)
-	}
-
+	out := dagger.PrintString(step)
 	fmt.Println(out != "")
 
 	// Output:
