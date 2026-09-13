@@ -27,7 +27,7 @@ type MiddlewareFunc[S any] func(next Step[S], info Info) Step[S]
 // chain of middlewares, the execution happens in order.
 type MiddlewareChain[S any] []middleware[S]
 
-//nolint:unused
+//nolint:unused // implements private middleware interface
 func (mwf MiddlewareFunc[S]) apply(next Step[S], info Info) Step[S] {
 	return mwf(next, info)
 }

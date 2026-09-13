@@ -9,6 +9,15 @@ func If[S any](condition Selector[S], thenStep Step[S]) Step[S] {
 	return &ifStep[S]{condition: condition, thenStep: thenStep}
 }
 
+type ifStep[S any] struct {
+	condition Selector[S]
+	thenStep  Step[S]
+}
+
+var _ middlewareSkipper = (*ifStep[any])(nil)
+
+func (s *ifStep[S]) CanSkipMiddleware() bool { return true }
+
 func (s *ifStep[S]) Exec(ctx context.Context, state S) error {
 	if s.condition(state) {
 		return execWithContext(ctx, s.thenStep, state)
@@ -18,12 +27,3 @@ func (s *ifStep[S]) Exec(ctx context.Context, state S) error {
 }
 
 func (s *ifStep[S]) Unwrap() Step[S] { return s.thenStep }
-
-type ifStep[S any] struct {
-	condition Selector[S]
-	thenStep  Step[S]
-}
-
-var _ middlewareSkipper = (*ifStep[any])(nil)
-
-func (s *ifStep[S]) CanSkipMiddleware() bool { return true }

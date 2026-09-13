@@ -11,6 +11,12 @@ func Series[S any](steps ...Step[S]) Step[S] {
 	return &seriesStep[S]{steps: steps}
 }
 
+type seriesStep[S any] struct{ steps []Step[S] }
+
+var _ middlewareSkipper = (*seriesStep[any])(nil)
+
+func (s *seriesStep[S]) CanSkipMiddleware() bool { return true }
+
 func (s *seriesStep[S]) Exec(ctx context.Context, state S) error {
 	for _, step := range s.steps {
 		if err := execWithContext(ctx, step, state); err != nil {
@@ -22,9 +28,3 @@ func (s *seriesStep[S]) Exec(ctx context.Context, state S) error {
 }
 
 func (s *seriesStep[S]) Unwrap() []Step[S] { return s.steps }
-
-type seriesStep[S any] struct{ steps []Step[S] }
-
-var _ middlewareSkipper = (*seriesStep[any])(nil)
-
-func (s *seriesStep[S]) CanSkipMiddleware() bool { return true }

@@ -27,8 +27,7 @@ func PrintString[S any](startStep Step[S], opts ...PrintOption) (string, error) 
 
 	restOpts := make([]PrintOption, 0, len(opts))
 	for _, opt := range opts {
-		switch opt.(type) {
-		case *writerOption:
+		if _, ok := opt.(*writerOption); ok {
 			continue
 		}
 		restOpts = append(restOpts, opt)

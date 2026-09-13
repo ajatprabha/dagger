@@ -52,14 +52,14 @@ func TestResult(t *testing.T) {
 		branch1Selected, branch2Selected, defSelected := 0, 0, 0
 		branch1Selector := func(ctx context.Context, err error) bool {
 			if errors.Is(err, err1) {
-				branch1Selected += 1
+				branch1Selected++
 				return true
 			}
 			return false
 		}
 		branch2Selector := func(ctx context.Context, err error) bool {
 			if errors.Is(err, err2) {
-				branch2Selected += 1
+				branch2Selected++
 				return true
 			}
 			return false
@@ -67,7 +67,7 @@ func TestResult(t *testing.T) {
 
 		ss := NewStep(func(ctx context.Context, state struct{}) error { success++; return nil })
 		fs := NewStep(func(ctx context.Context, state struct{}) error { failure++; return nil })
-		ds := NewStep(func(ctx context.Context, state struct{}) error { defSelected += 1; return nil })
+		ds := NewStep(func(ctx context.Context, state struct{}) error { defSelected++; return nil })
 
 		t.Run("DefaultBranch", func(t *testing.T) {
 			ms := NewStep(func(ctx context.Context, state struct{}) error { return errors.New("error random") })

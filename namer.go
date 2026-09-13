@@ -48,10 +48,7 @@ func (s ScopedName) String() string {
 		return s.Name()
 	}
 
-	return strings.Join([]string{
-		pkg,
-		s.Name(),
-	}, ":")
+	return pkg + ":" + s.Name()
 }
 
 func (s GenericScopedName) StepScopedName() ScopedName { return s[0] }
@@ -170,7 +167,7 @@ func stepTypeName[S any](s Step[S]) fmt.Stringer {
 		return fmtStr("nil")
 	}
 
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

@@ -1,0 +1,48 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - govet
+    - ineffassign
+    - staticcheck
+    - bodyclose
+    - copyloopvar
+    - makezero
+    - reassign
+    - unconvert
+    - gocheckcompilerdirectives
+    - revive
+    - gocritic
+    - misspell
+    - perfsprint
+    - gosec
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - appendAssign
+
+  exclusions:
+    generated: strict
+    paths:
+      - .bin
+      - vendor
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - gocritic
+          - revive

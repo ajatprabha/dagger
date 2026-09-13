@@ -15,6 +15,12 @@ func Continue[S any](steps ...Step[S]) Step[S] {
 	return &continueStep[S]{steps: steps}
 }
 
+type continueStep[S any] struct{ steps []Step[S] }
+
+var _ middlewareSkipper = (*continueStep[any])(nil)
+
+func (s *continueStep[S]) CanSkipMiddleware() bool { return true }
+
 func (s *continueStep[S]) Exec(ctx context.Context, state S) error {
 	var err error
 
@@ -28,9 +34,3 @@ func (s *continueStep[S]) Exec(ctx context.Context, state S) error {
 }
 
 func (s *continueStep[S]) Unwrap() []Step[S] { return s.steps }
-
-type continueStep[S any] struct{ steps []Step[S] }
-
-var _ middlewareSkipper = (*continueStep[any])(nil)
-
-func (s *continueStep[S]) CanSkipMiddleware() bool { return true }

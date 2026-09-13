@@ -3,7 +3,6 @@ package dagger
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -218,7 +217,7 @@ type mockWriter struct {
 func (m *mockWriter) Write(p []byte) (n int, err error) {
 	m.written += len(p)
 	if m.written >= m.errorAfter {
-		return 0, fmt.Errorf("mock write error")
+		return 0, errors.New("mock write error")
 	}
 	return len(p), nil
 }
