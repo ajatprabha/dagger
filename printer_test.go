@@ -9,162 +9,150 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func testNoopStep(_ context.Context, _ struct{}) error        { return nil }
+func testElseErrStep(_ context.Context, _ struct{}) error     { return errors.New("else error") }
+func testSeriesErrStep(_ context.Context, _ struct{}) error   { return errors.New("series error") }
+func testContinueErrStep(_ context.Context, _ struct{}) error { return errors.New("continue error") }
+func testFailureErrStep(_ context.Context, _ struct{}) error  { return errors.New("failure") }
+func testInnerErrStep(_ context.Context, _ struct{}) error    { return errors.New("inner error") }
+func testResultErrStep(_ context.Context, _ struct{}) error   { return errors.New("result error") }
+func testBranchErrStep(_ context.Context, _ struct{}) error   { return errors.New("branch error") }
+
 func TestPrintDAG(t *testing.T) {
-	doNothingStep := func() Step[struct{}] {
-		return NewStep(func(_ context.Context, _ struct{}) error { return nil })
-	}
-	doNothingSharedRef := doNothingStep()
+	sharedStep := NewStep(testNoopStep)
 	tests := []struct {
 		name           string
 		startStep      Step[struct{}]
 		expectedOutput string
 	}{
 		{
-			name: "simple StepFunc",
-			startStep: NewStep(func(ctx context.Context, state struct{}) error {
-				return nil
-			}),
+			name:      "simple StepFunc",
+			startStep: NewStep(testNoopStep),
 			expectedOutput: `
-dagger:TestPrintDAG.func2`,
+dagger:testNoopStep`,
 		},
 		{
 			name: "If step",
 			startStep: If(
 				func(s struct{}) bool { return true },
-				doNothingStep(),
+				NewStep(testNoopStep),
 			),
 			expectedOutput: `
 dagger:ifStep[struct {}]
-    └── dagger:TestPrintDAG.func1.func1`,
+    └── dagger:testNoopStep`,
 		},
 		{
 			name: "IfElse step",
 			startStep: IfElse(
 				func(s struct{}) bool { return true },
-				doNothingStep(),
-				NewStep(func(_ context.Context, _ struct{}) error {
-					return errors.New("else error")
-				}),
+				NewStep(testNoopStep),
+				NewStep(testElseErrStep),
 			),
 			expectedOutput: `
 dagger:ifElseStep[struct {}]
-    ├── dagger:TestPrintDAG.func1.func1
-    └── dagger:TestPrintDAG.func5`,
+    ├── dagger:testNoopStep
+    └── dagger:testElseErrStep`,
 		},
 		{
 			name: "Series step with multiple children",
 			startStep: Series(
-				doNothingStep(),
-				NewStep(func(_ context.Context, _ struct{}) error {
-					return errors.New("series error")
-				}),
-				doNothingSharedRef, // Shared reference
+				NewStep(testNoopStep),
+				NewStep(testSeriesErrStep),
+				sharedStep, // Shared reference
 			),
 			expectedOutput: `
 dagger:seriesStep[struct {}]
-    ├── dagger:TestPrintDAG.func1.func1
-    ├── dagger:TestPrintDAG.func6
-    └── dagger:TestPrintDAG.func1.func1`,
+    ├── dagger:testNoopStep
+    ├── dagger:testSeriesErrStep
+    └── dagger:testNoopStep`,
 		},
 		{
 			name: "Continue step with multiple children",
 			startStep: Continue(
-				doNothingSharedRef,
-				NewStep(func(_ context.Context, _ struct{}) error {
-					return errors.New("continue error")
-				}),
-				doNothingSharedRef,
+				sharedStep,
+				NewStep(testContinueErrStep),
+				sharedStep,
 			),
 			expectedOutput: `
 dagger:continueStep[struct {}]
-    ├── dagger:TestPrintDAG.func1.func1
-    ├── dagger:TestPrintDAG.func7
-    └── dagger:TestPrintDAG.func1.func1`,
+    ├── dagger:testNoopStep
+    ├── dagger:testContinueErrStep
+    └── dagger:testNoopStep`,
 		},
 		{
 			name: "Result step",
 			startStep: Result(
-				doNothingSharedRef,
-				OnSuccess(doNothingSharedRef),
-				OnError(NewStep(func(ctx context.Context, state struct{}) error {
-					return errors.New("failure")
-				})),
+				sharedStep,
+				OnSuccess(sharedStep),
+				OnError(NewStep(testFailureErrStep)),
 			),
 			expectedOutput: `
 dagger:resultStep[struct {}]
-    ├── dagger:TestPrintDAG.func1.func1 [main]
-    ├── dagger:TestPrintDAG.func1.func1 [success]
-    └── dagger:TestPrintDAG.func8 [failure]`,
+    ├── dagger:testNoopStep [main]
+    ├── dagger:testNoopStep [success]
+    └── dagger:testFailureErrStep [failure]`,
 		},
 		{
 			name: "complex nested structure",
 			startStep: Series(
 				If(func(s struct{}) bool { return true },
 					Result(
-						doNothingSharedRef,
-						OnSuccess(NewStep(func(ctx context.Context, state struct{}) error { return nil })),
-						OnError(NewStep(func(ctx context.Context, state struct{}) error {
-							return errors.New("inner error")
-						})),
+						sharedStep,
+						OnSuccess(NewStep(testNoopStep)),
+						OnError(NewStep(testInnerErrStep)),
 					),
 				),
 				Continue(
-					doNothingSharedRef,
-					NewStep(func(_ context.Context, _ struct{}) error {
-						return errors.New("continue error")
-					}),
+					sharedStep,
+					NewStep(testContinueErrStep),
 				),
 				IfElse(
 					func(s struct{}) bool { return false },
-					doNothingStep(),
+					NewStep(testNoopStep),
 					Result(
-						NewStep(func(_ context.Context, _ struct{}) error {
-							return errors.New("result error")
-						}),
+						NewStep(testResultErrStep),
 						Switch[struct{}](
 							Case(
 								func(ctx context.Context, err error) bool {
 									return true
 								},
-								NewStep(func(_ context.Context, _ struct{}) error {
-									return errors.New("branch error")
-								}),
+								NewStep(testBranchErrStep),
 							),
 							Case(
 								func(ctx context.Context, err error) bool { return false },
-								doNothingSharedRef,
+								sharedStep,
 							),
 							DefaultCase(Result(
-								doNothingSharedRef,
-								OnError(doNothingStep()),
+								sharedStep,
+								OnError(NewStep(testNoopStep)),
 							)),
 						),
 					),
 				),
-				doNothingSharedRef,
+				sharedStep,
 			),
 			expectedOutput: `
 dagger:seriesStep[struct {}]
     ├── dagger:ifStep[struct {}]
     │   └── dagger:resultStep[struct {}]
-    │       ├── dagger:TestPrintDAG.func1.func1 [main]
-    │       ├── dagger:TestPrintDAG.func10 [success]
-    │       └── dagger:TestPrintDAG.func11 [failure]
+    │       ├── dagger:testNoopStep [main]
+    │       ├── dagger:testNoopStep [success]
+    │       └── dagger:testInnerErrStep [failure]
     ├── dagger:continueStep[struct {}]
-    │   ├── dagger:TestPrintDAG.func1.func1
-    │   └── dagger:TestPrintDAG.func12
+    │   ├── dagger:testNoopStep
+    │   └── dagger:testContinueErrStep
     ├── dagger:ifElseStep[struct {}]
-    │   ├── dagger:TestPrintDAG.func1.func1
+    │   ├── dagger:testNoopStep
     │   └── dagger:resultStep[struct {}]
-    │       ├── dagger:TestPrintDAG.func14 [main]
+    │       ├── dagger:testResultErrStep [main]
     │       ├── nil [success]
-    │       ├── dagger:TestPrintDAG.func16 [failure]
-    │       ├── dagger:TestPrintDAG.func1.func1 [failure]
+    │       ├── dagger:testBranchErrStep [failure]
+    │       ├── dagger:testNoopStep [failure]
     │       └── dagger:resultStep[struct {}] [failure]
-    │           ├── dagger:TestPrintDAG.func1.func1
+    │           ├── dagger:testNoopStep
     │           ├── nil
-    │           └── dagger:TestPrintDAG.func1.func1
-    └── dagger:TestPrintDAG.func1.func1`,
+    │           └── dagger:testNoopStep
+    └── dagger:testNoopStep`,
 		},
 	}
 
