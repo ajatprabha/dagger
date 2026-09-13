@@ -274,6 +274,7 @@ func ExampleResult_switch() {
 				fmt.Println("Success")
 				return nil
 			})),
+			// Switch is useful if an action has to be taken based on what the error is
 			dagger.Switch[exampleState](
 				dagger.Case(networkError, dagger.NewStep(func(ctx context.Context, state exampleState) error {
 					fmt.Println("Handle network error")
