@@ -9,7 +9,10 @@ import (
 type FailureSelector[S any] func(ctx context.Context, err error) bool
 
 // SwitchCase represents a case in a switch statement for error handling
-type SwitchCase[S any] interface{ isSwitchCase() }
+type SwitchCase[S any] interface {
+	match(ctx context.Context, err error) (Step[S], bool)
+	Unwrap() Step[S]
+}
 
 // switchCase implements SwitchCase for conditional error handling
 type switchCase[S any] struct {
@@ -17,12 +20,27 @@ type switchCase[S any] struct {
 	step     Step[S]
 }
 
-func (c switchCase[S]) isSwitchCase() {}
+func (c switchCase[S]) match(ctx context.Context, err error) (Step[S], bool) {
+	if c.selector(ctx, err) {
+		return c.step, true
+	}
+	return nil, false
+}
+
+func (c switchCase[S]) Unwrap() Step[S] {
+	return c.step
+}
 
 // switchDefault implements SwitchCase for default error handling
 type switchDefault[S any] struct{ step Step[S] }
 
-func (d switchDefault[S]) isSwitchCase() {}
+func (d switchDefault[S]) match(_ context.Context, _ error) (Step[S], bool) {
+	return d.step, true
+}
+
+func (d switchDefault[S]) Unwrap() Step[S] {
+	return d.step
+}
 
 // Case creates a SwitchCase that executes a step when the predicate returns true
 func Case[S any](predicate FailureSelector[S], step Step[S]) SwitchCase[S] {
@@ -41,14 +59,8 @@ type switchHandler[S any] struct {
 
 func (s *switchHandler[S]) selectStep(ctx context.Context, err error) Step[S] {
 	for _, c := range s.cases {
-		switch sc := c.(type) {
-		case switchCase[S]:
-			if sc.selector(ctx, err) {
-				return sc.step
-			}
-		case switchDefault[S]:
-			// Default case is checked last and always matches
-			return sc.step
+		if step, ok := c.match(ctx, err); ok {
+			return step
 		}
 	}
 	return nil
@@ -57,12 +69,7 @@ func (s *switchHandler[S]) selectStep(ctx context.Context, err error) Step[S] {
 func (s *switchHandler[S]) Unwrap() []Step[S] {
 	steps := make([]Step[S], 0, len(s.cases))
 	for _, c := range s.cases {
-		switch sc := c.(type) {
-		case switchCase[S]:
-			steps = append(steps, sc.step)
-		case switchDefault[S]:
-			steps = append(steps, sc.step)
-		}
+		steps = append(steps, c.Unwrap())
 	}
 	return steps
 }
