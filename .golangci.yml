@@ -2,47 +2,76 @@ version: "2"
 
 run:
   timeout: 5m
+  tests: true
 
 linters:
   default: none
   enable:
     - errcheck
-    - errorlint
     - govet
     - ineffassign
     - staticcheck
-    - bodyclose
-    - copyloopvar
-    - makezero
-    - reassign
-    - unconvert
-    - gocheckcompilerdirectives
-    - revive
+    - unused
     - gocritic
-    - misspell
-    - perfsprint
     - gosec
+    - revive
 
   settings:
     revive:
+      severity: warning
       rules:
-        - name: exported
-          disabled: true
-        - name: unused-parameter
-          disabled: true
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
     gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
       disabled-checks:
+        - hugeParam
+        - rangeValCopy
+        - paramTypeCombine
+        - unnamedResult
         - appendAssign
 
+    gosec:
+      excludes:
+        - G404 # math/rand in tests
+
   exclusions:
-    generated: strict
-    paths:
-      - .bin
-      - vendor
     rules:
       - path: _test\.go
         linters:
           - errcheck
           - gosec
-          - gocritic
-          - revive
+
+formatters:
+  enable:
+    - gofmt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/ajatprabha/dagger)

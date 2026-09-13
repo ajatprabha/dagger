@@ -1,6 +1,7 @@
 package dagger
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -265,4 +266,32 @@ func TestPrintDAG_NilStep(t *testing.T) {
 			assert.Equal(t, tc.expectedOutput, out)
 		})
 	}
+}
+
+func TestPrint_ResultStepFormatting(t *testing.T) {
+	t.Run("prints result step branches with branch labels", func(t *testing.T) {
+		main := NewStep(func(_ context.Context, _ struct{}) error { return nil })
+		success := NewStep(func(_ context.Context, _ struct{}) error { return nil })
+		failure := NewStep(func(_ context.Context, _ struct{}) error { return nil })
+
+		step := Result(main, OnSuccess(success), OnError(failure))
+
+		buf := &bytes.Buffer{}
+		opts := defaultPrintOptions()
+		opts.writer = buf
+
+		dp := &dagPrinter[struct{}]{
+			opts:    opts,
+			visited: make(map[string]bool),
+		}
+
+		err := dp.printWithLabel(main, "", false, " [main]")
+		assert.NoError(t, err)
+
+		rs, ok := step.(*resultStep[struct{}])
+		assert.True(t, ok)
+		err = rs.printDAG(dp, "", true, false)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, buf.String())
+	})
 }

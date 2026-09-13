@@ -136,3 +136,21 @@ func TestResult(t *testing.T) {
 		})
 	})
 }
+
+func TestResultOption_Custom(t *testing.T) {
+	ran := false
+	customSuccessStep := NewStep(func(_ context.Context, _ struct{}) error {
+		ran = true
+		return nil
+	})
+	customOption := resultOptionFunc[struct{}](func(cfg *resultConfig[struct{}]) {
+		cfg.successStep = customSuccessStep
+	})
+
+	cfg := &resultConfig[struct{}]{}
+	customOption.apply(cfg)
+
+	assert.NotNil(t, cfg.successStep)
+	assert.NoError(t, cfg.successStep.Exec(context.Background(), struct{}{}))
+	assert.True(t, ran)
+}

@@ -59,3 +59,38 @@ dagger:StepWithErr[useState·4]
 `, buf.String())
 	})
 }
+
+func TestOnError(t *testing.T) {
+	t.Run("executes failure step on error", func(t *testing.T) {
+		failureRan := false
+		mainErr := errors.New("main error")
+
+		mainStep := NewStep(func(_ context.Context, _ struct{}) error { return mainErr })
+		failureStep := NewStep(func(_ context.Context, _ struct{}) error {
+			failureRan = true
+			return nil
+		})
+
+		dagStep := Result(mainStep, OnError(failureStep))
+		err := dagStep.Exec(context.Background(), struct{}{})
+		assert.NoError(t, err)
+		assert.True(t, failureRan)
+	})
+
+	t.Run("singleStepHandler unwrap and selection", func(t *testing.T) {
+		executed := false
+		dummyStep := NewStep(func(_ context.Context, _ struct{}) error {
+			executed = true
+			return nil
+		})
+		handler := &singleStepHandler[struct{}]{step: dummyStep}
+
+		selected := handler.selectStep(context.Background(), errors.New("any error"))
+		assert.NotNil(t, selected)
+		assert.NoError(t, selected.Exec(context.Background(), struct{}{}))
+		assert.True(t, executed)
+
+		unwrapped := handler.Unwrap()
+		assert.NotNil(t, unwrapped)
+	})
+}

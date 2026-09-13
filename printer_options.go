@@ -99,7 +99,7 @@ type indentOption struct{ indent string }
 func (o indentOption) apply(opts *printOptions) {
 	opts.indent = o.indent
 	// Also update vertical line and empty space to match indent length
-	if len(o.indent) > 0 {
+	if o.indent != "" {
 		opts.verticalLine = "│" + o.indent[1:]
 		opts.emptySpace = o.indent
 	}

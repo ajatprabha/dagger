@@ -231,13 +231,6 @@ func (p *dagPrinter[S]) getChildPrefix(parentPrefix string, parentIsLast bool) s
 	return parentPrefix + p.opts.verticalLine
 }
 
-// Helper to get generic type suffix
-func getGenericTypeSuffix[S any]() string {
-	var zero S
-	typeName := fmt.Sprintf("%T", zero)
-	return fmt.Sprintf("[%s]", typeName)
-}
-
 // printNewLine prints a newline
 func (p *dagPrinter[S]) printNewLine() error {
 	if _, err := fmt.Fprint(p.opts.writer, "\n"); err != nil {

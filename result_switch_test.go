@@ -8,15 +8,57 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestResultSwitch(t *testing.T) {
-	t.Run("switchCase implements SwitchCase", func(t *testing.T) {
-		var c SwitchCase[any] = &switchCase[any]{}
-		c.isSwitchCase()
+func TestSwitchHandler(t *testing.T) {
+	ctx := context.Background()
+	step1Ran := false
+	step2Ran := false
+	step1 := NewStep(func(_ context.Context, _ struct{}) error {
+		step1Ran = true
+		return nil
+	})
+	step2 := NewStep(func(_ context.Context, _ struct{}) error {
+		step2Ran = true
+		return nil
 	})
 
-	t.Run("switchDefault implements SwitchCase", func(t *testing.T) {
-		var d SwitchCase[any] = &switchDefault[any]{}
-		d.isSwitchCase()
+	errTarget := errors.New("target error")
+
+	handler := &switchHandler[struct{}]{
+		cases: []SwitchCase[struct{}]{
+			Case(func(_ context.Context, err error) bool { return errors.Is(err, errTarget) }, step1),
+			DefaultCase[struct{}](step2),
+		},
+	}
+
+	t.Run("matches specific case", func(t *testing.T) {
+		step1Ran = false
+		selected := handler.selectStep(ctx, errTarget)
+		assert.NotNil(t, selected)
+		assert.NoError(t, selected.Exec(ctx, struct{}{}))
+		assert.True(t, step1Ran)
+	})
+
+	t.Run("falls back to default case", func(t *testing.T) {
+		step2Ran = false
+		selected := handler.selectStep(ctx, errors.New("other error"))
+		assert.NotNil(t, selected)
+		assert.NoError(t, selected.Exec(ctx, struct{}{}))
+		assert.True(t, step2Ran)
+	})
+
+	t.Run("no match returns nil when no default case", func(t *testing.T) {
+		noDefaultHandler := &switchHandler[struct{}]{
+			cases: []SwitchCase[struct{}]{
+				Case(func(_ context.Context, err error) bool { return errors.Is(err, errTarget) }, step1),
+			},
+		}
+		selected := noDefaultHandler.selectStep(ctx, errors.New("other error"))
+		assert.Nil(t, selected)
+	})
+
+	t.Run("unwraps all case steps", func(t *testing.T) {
+		steps := handler.Unwrap()
+		assert.Len(t, steps, 2)
 	})
 }
 
