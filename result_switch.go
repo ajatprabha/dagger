@@ -20,6 +20,7 @@ type switchCase[S any] struct {
 	step     Step[S]
 }
 
+//nolint:unused // implements private SwitchCase interface
 func (c switchCase[S]) match(ctx context.Context, err error) (Step[S], bool) {
 	if c.selector(ctx, err) {
 		return c.step, true
@@ -34,6 +35,7 @@ func (c switchCase[S]) Unwrap() Step[S] {
 // switchDefault implements SwitchCase for default error handling
 type switchDefault[S any] struct{ step Step[S] }
 
+//nolint:unused // implements private SwitchCase interface
 func (d switchDefault[S]) match(_ context.Context, _ error) (Step[S], bool) {
 	return d.step, true
 }
