@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -314,4 +315,70 @@ func TestPrint(t *testing.T) {
 	err := Print(step, WithWriter(buf))
 	assert.NoError(t, err)
 	assert.NotEmpty(t, buf.String())
+}
+
+type errWriter struct {
+	err error
+}
+
+func (w *errWriter) Write(p []byte) (n int, err error) {
+	return 0, w.err
+}
+
+func TestPrint_WriterError(t *testing.T) {
+	expectedErr := errors.New("write failure")
+	w := &errWriter{err: expectedErr}
+
+	step := Series(NewStep(testNoopStep), NewStep(testElseErrStep))
+	err := Print(step, WithWriter(w))
+
+	assert.ErrorIs(t, err, expectedErr)
+}
+
+type testValueStep struct {
+	value string
+}
+
+func (s testValueStep) Exec(_ context.Context, _ struct{}) error {
+	return nil
+}
+
+func TestPrintDAG_ValueBasedSteps(t *testing.T) {
+	step1 := testValueStep{value: "equal"}
+	step2 := testValueStep{value: "equal"}
+
+	series := Series[struct{}](step1, step2)
+	out := PrintString(series, WithReferences())
+
+	assert.NotContains(t, out, "(ref")
+	assert.Equal(t, 2, strings.Count(out, "dagger:testValueStep"))
+}
+
+func TestStepID(t *testing.T) {
+	t.Run("nil step", func(t *testing.T) {
+		id, ok := stepID[struct{}](nil)
+		assert.False(t, ok)
+		assert.Empty(t, id)
+	})
+
+	t.Run("pointer step", func(t *testing.T) {
+		step := &seriesStep[struct{}]{}
+		id, ok := stepID[struct{}](step)
+		assert.True(t, ok)
+		assert.NotEmpty(t, id)
+	})
+
+	t.Run("func step", func(t *testing.T) {
+		step := NewStep(testNoopStep)
+		id, ok := stepID[struct{}](step)
+		assert.True(t, ok)
+		assert.NotEmpty(t, id)
+	})
+
+	t.Run("value step", func(t *testing.T) {
+		step := testValueStep{value: "test"}
+		id, ok := stepID[struct{}](step)
+		assert.False(t, ok)
+		assert.Empty(t, id)
+	})
 }

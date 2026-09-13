@@ -223,6 +223,18 @@ func Test_checkDAGCycles(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("acyclic dag with value-based steps", func(t *testing.T) {
+		step1 := testValueStep{value: "v1"}
+		step2 := testValueStep{value: "v2"}
+		err := checkDAGCycles[struct{}](Series[struct{}](step1, step2))
+		assert.NoError(t, err)
+	})
+
+	t.Run("acyclic dag with nil step", func(t *testing.T) {
+		err := checkDAGCycles[struct{}](nil)
+		assert.NoError(t, err)
+	})
+
 	t.Run("cyclic dag", func(t *testing.T) {
 		errCycle := new(ErrCycle)
 

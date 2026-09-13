@@ -2,6 +2,7 @@ package dagger
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ func Print[S any](startStep Step[S], opts ...PrintOption) error {
 	}
 
 	printer.print(startStep, "", false, false)
-	return nil
+	return printer.err
 }
 
 // PrintString returns the DAG structure as a string.
@@ -53,6 +54,21 @@ type dagPrinterInterface[S any] interface {
 type dagPrinter[S any] struct {
 	opts    *printOptions
 	visited map[string]bool
+	err     error
+}
+
+func (p *dagPrinter[S]) write(s string) {
+	if p.err != nil {
+		return
+	}
+	_, p.err = fmt.Fprint(p.opts.writer, s)
+}
+
+func (p *dagPrinter[S]) writef(format string, a ...any) {
+	if p.err != nil {
+		return
+	}
+	_, p.err = fmt.Fprintf(p.opts.writer, format, a...)
 }
 
 func (p *dagPrinter[S]) connector(isLast bool) string {
@@ -83,10 +99,10 @@ func (p *dagPrinter[S]) printNil(prefix string, isLast bool, needNewline bool) {
 	p.printNewLineIfNeeded(needNewline)
 
 	if prefix == "" {
-		fmt.Fprintf(p.opts.writer, "nil")
+		p.write("nil")
 		return
 	}
-	fmt.Fprintf(p.opts.writer, "%s%snil", prefix, p.connector(isLast))
+	p.writef("%s%snil", prefix, p.connector(isLast))
 }
 
 // printNodeHeader prints the prefix, connector, and name for a node.
@@ -94,27 +110,29 @@ func (p *dagPrinter[S]) printNil(prefix string, isLast bool, needNewline bool) {
 // or false if the node was already visited (caller should not print children).
 func (p *dagPrinter[S]) printNodeHeader(step Step[S], prefix string, isLast bool, needNewline bool) bool {
 	name := StepName(step)
-	ptr := fmt.Sprintf("%p", step)
+	id, hasID := stepID(step)
 
-	if p.visited[ptr] {
+	if hasID && p.visited[id] {
 		p.printNewLineIfNeeded(needNewline)
 		ref := ""
 		if p.opts.showReferences {
 			ref = " (ref)"
 		}
-		fmt.Fprintf(p.opts.writer, "%s%s%s%s", prefix, p.connector(isLast), name.String(), ref)
+		p.writef("%s%s%s%s", prefix, p.connector(isLast), name.String(), ref)
 		return false
 	}
-	p.visited[ptr] = true
+	if hasID {
+		p.visited[id] = true
+	}
 
 	p.printNewLineIfNeeded(needNewline)
 
 	if prefix == "" {
-		fmt.Fprintf(p.opts.writer, "%s", name.String())
+		p.write(name.String())
 		return true
 	}
 
-	fmt.Fprintf(p.opts.writer, "%s%s%s", prefix, p.connector(isLast), name.String())
+	p.writef("%s%s%s", prefix, p.connector(isLast), name.String())
 	return true
 }
 
@@ -145,24 +163,26 @@ func (p *dagPrinter[S]) printWithLabel(step Step[S], prefix string, isLast bool,
 	}
 
 	if step == nil {
-		fmt.Fprintf(p.opts.writer, "%s%snil%s", prefix, connector, labelStr)
+		p.writef("%s%snil%s", prefix, connector, labelStr)
 		return
 	}
 
 	name := StepName(step)
-	ptr := fmt.Sprintf("%p", step)
+	id, hasID := stepID(step)
 
-	if p.visited[ptr] {
+	if hasID && p.visited[id] {
 		ref := ""
 		if p.opts.showReferences {
 			ref = " (ref)"
 		}
-		fmt.Fprintf(p.opts.writer, "%s%s%s%s%s", prefix, connector, name.String(), ref, labelStr)
+		p.writef("%s%s%s%s%s", prefix, connector, name.String(), ref, labelStr)
 		return
 	}
 
-	p.visited[ptr] = true
-	fmt.Fprintf(p.opts.writer, "%s%s%s%s", prefix, connector, name.String(), labelStr)
+	if hasID {
+		p.visited[id] = true
+	}
+	p.writef("%s%s%s%s", prefix, connector, name.String(), labelStr)
 
 	// Get children and print them
 	children := unwrapper[S](step)
@@ -187,7 +207,7 @@ func (p *dagPrinter[S]) getChildPrefix(parentPrefix string, parentIsLast bool) s
 
 // printNewLine prints a newline
 func (p *dagPrinter[S]) printNewLine() {
-	fmt.Fprint(p.opts.writer, "\n")
+	p.write("\n")
 }
 
 func (p *dagPrinter[S]) printNewLineIfNeeded(needNewline bool) {
@@ -219,5 +239,18 @@ func (s *resultStep[S]) printDAG(p *dagPrinter[S], prefix string, isLast bool, n
 			isLastFailure := i == len(failureSteps)-1
 			p.printWithLabel(fs, childPrefix, isLastFailure, " [failure]")
 		}
+	}
+}
+
+func stepID[S any](step Step[S]) (string, bool) {
+	if step == nil {
+		return "", false
+	}
+	val := reflect.ValueOf(step)
+	switch val.Kind() {
+	case reflect.Pointer, reflect.UnsafePointer, reflect.Func:
+		return fmt.Sprintf("%T(%p)", step, step), true
+	default:
+		return "", false
 	}
 }
