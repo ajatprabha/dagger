@@ -42,11 +42,9 @@ test-xml: test-cov gocov-xml
 # ========= Helpers ===========
 
 ## Determine the golangci-lint version based on $(GO_MINOR_VERSION)
-GOLANGCI_LINT_PKG := $(if $(filter 22 23 24,$(GO_MINOR_VERSION)),github.com/golangci/golangci-lint/cmd/golangci-lint,github.com/golangci/golangci-lint/v2/cmd/golangci-lint)
+GOLANGCI_LINT_PKG := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOLANGCI_LINT_DEFAULT := v2.13.2
-GOLANGCI_LINT_V22 := v1.59.1
-GOLANGCI_LINT_V23 := v1.62.1
-GOLANGCI_LINT_V24 := v1.64.8
+GOLANGCI_LINT_V25 := v2.12.2
 
 get-golangci-lint-version = $(or $(value GOLANGCI_LINT_V$(1)), $(GOLANGCI_LINT_DEFAULT))
 GOLANGCI_LINT_VERSION := $(call get-golangci-lint-version,$(GO_MINOR_VERSION))
@@ -58,7 +56,7 @@ gci:
 	$(call install-if-needed,GCI_BIN,github.com/daixiang0/gci,v0.13.5)
 
 gocov:
-	$(call install-if-needed,GOCOV,github.com/axw/gocov/gocov,v1.2.1,golang.org/x/tools@latest golang.org/x/sync@latest)
+	$(call install-if-needed,GOCOV,github.com/axw/gocov/gocov,v1.2.1,golang.org/x/tools@v0.44.0 golang.org/x/sync@v0.20.0)
 
 gocov-xml:
 	$(call install-if-needed,GOCOVXML,github.com/AlekSi/gocov-xml,v1.1.0)

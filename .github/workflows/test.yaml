@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .bin
-          key: ${{ runner.os }}-${{ hashFiles('Makefile') }}
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('Makefile') }}
       - name: Install jq
         uses: dcarbone/install-jq-action@v3
       - name: Test
