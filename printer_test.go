@@ -283,3 +283,35 @@ func TestPrint_ResultStepFormatting(t *testing.T) {
 		assert.NotEmpty(t, buf.String())
 	})
 }
+
+func TestPrintOptions(t *testing.T) {
+	step := Series(NewStep(testNoopStep), NewStep(testElseErrStep))
+
+	t.Run("WithCompactSymbols", func(t *testing.T) {
+		out, err := PrintString(step, WithCompactSymbols())
+		assert.NoError(t, err)
+		assert.Contains(t, out, "|- ")
+		assert.Contains(t, out, "`- ")
+	})
+
+	t.Run("WithSymbols", func(t *testing.T) {
+		out, err := PrintString(step, WithSymbols("+-- ", "\\-- ", "|   ", "    "))
+		assert.NoError(t, err)
+		assert.Contains(t, out, "+-- ")
+		assert.Contains(t, out, "\\-- ")
+	})
+
+	t.Run("WithIndent", func(t *testing.T) {
+		out, err := PrintString(step, WithIndent("  "))
+		assert.NoError(t, err)
+		assert.NotEmpty(t, out)
+	})
+
+	t.Run("WithoutLabels", func(t *testing.T) {
+		resStep := Result(NewStep(testNoopStep), OnSuccess(NewStep(testNoopStep)))
+		out, err := PrintString(resStep, WithoutLabels())
+		assert.NoError(t, err)
+		assert.NotContains(t, out, "[main]")
+		assert.NotContains(t, out, "[success]")
+	})
+}
