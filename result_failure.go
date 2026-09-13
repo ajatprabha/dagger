@@ -34,6 +34,10 @@ func (f StepWithErr[S]) Exec(ctx context.Context, state S) error {
 }
 
 func (s *resultStep[S]) handleErr(ctx context.Context, state S, err error) error {
+	if s.failureHandler == nil {
+		return err
+	}
+
 	if step := s.failureHandler.selectStep(ctx, err); step != nil {
 		return execWithContext(resultErrToContext(ctx, err), step, state)
 	}

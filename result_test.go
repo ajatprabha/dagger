@@ -135,6 +135,49 @@ func TestResult(t *testing.T) {
 			assert.Equal(t, 1, defSelected)
 		})
 	})
+
+	t.Run("OnSuccessOnly", func(t *testing.T) {
+		t.Run("FailingMainStepReturnsErrorWithoutPanic", func(t *testing.T) {
+			expectedErr := errors.New("main step failed")
+			ms := NewStep(func(ctx context.Context, state struct{}) error { return expectedErr })
+			ss := NewStep(func(ctx context.Context, state struct{}) error { return nil })
+
+			err := Result(ms, OnSuccess(ss)).Exec(context.TODO(), struct{}{})
+			assert.ErrorIs(t, err, expectedErr)
+		})
+
+		t.Run("SuccessfulMainStepExecutesSuccessStep", func(t *testing.T) {
+			success := 0
+			ms := NewStep(func(ctx context.Context, state struct{}) error { return nil })
+			ss := NewStep(func(ctx context.Context, state struct{}) error { success++; return nil })
+
+			err := Result(ms, OnSuccess(ss)).Exec(context.TODO(), struct{}{})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, success)
+		})
+	})
+
+	t.Run("OnErrorOnly", func(t *testing.T) {
+		t.Run("SuccessfulMainStepReturnsNilWithoutPanic", func(t *testing.T) {
+			failure := 0
+			ms := NewStep(func(ctx context.Context, state struct{}) error { return nil })
+			fs := NewStep(func(ctx context.Context, state struct{}) error { failure++; return nil })
+
+			err := Result(ms, OnError(fs)).Exec(context.TODO(), struct{}{})
+			assert.NoError(t, err)
+			assert.Equal(t, 0, failure)
+		})
+
+		t.Run("FailingMainStepExecutesFailureStep", func(t *testing.T) {
+			failure := 0
+			ms := NewStep(func(ctx context.Context, state struct{}) error { return errors.New("main failed") })
+			fs := NewStep(func(ctx context.Context, state struct{}) error { failure++; return nil })
+
+			err := Result(ms, OnError(fs)).Exec(context.TODO(), struct{}{})
+			assert.NoError(t, err)
+			assert.Equal(t, 1, failure)
+		})
+	})
 }
 
 func TestResultOption_Custom(t *testing.T) {

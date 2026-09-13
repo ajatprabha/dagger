@@ -74,6 +74,10 @@ func (s *resultStep[S]) Exec(ctx context.Context, state S) error {
 		return s.handleErr(ctx, state, err)
 	}
 
+	if s.successStep == nil {
+		return nil
+	}
+
 	return execWithContext(ctx, s.successStep, state)
 }
 
