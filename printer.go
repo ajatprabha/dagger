@@ -55,6 +55,13 @@ type dagPrinter[S any] struct {
 	visited map[string]bool
 }
 
+func (p *dagPrinter[S]) connector(isLast bool) string {
+	if isLast {
+		return p.opts.lastConnector
+	}
+	return p.opts.connector
+}
+
 // print is the main printing function
 func (p *dagPrinter[S]) print(step Step[S], prefix string, isLast bool, needNewline bool) {
 	if step == nil {
@@ -75,54 +82,46 @@ func (p *dagPrinter[S]) print(step Step[S], prefix string, isLast bool, needNewl
 func (p *dagPrinter[S]) printNil(prefix string, isLast bool, needNewline bool) {
 	p.printNewLineIfNeeded(needNewline)
 
-	connector := p.opts.connector
-	if isLast {
-		connector = p.opts.lastConnector
-	}
-
 	if prefix == "" {
 		fmt.Fprintf(p.opts.writer, "nil")
 		return
 	}
-	fmt.Fprintf(p.opts.writer, "%s%snil", prefix, connector)
+	fmt.Fprintf(p.opts.writer, "%s%snil", prefix, p.connector(isLast))
 }
 
-// printDefault is the standard printing for most steps
-func (p *dagPrinter[S]) printDefault(step Step[S], prefix string, isLast bool, needNewline bool) {
+// printNodeHeader prints the prefix, connector, and name for a node.
+// It returns true if this is the first visit to the node (caller should print children),
+// or false if the node was already visited (caller should not print children).
+func (p *dagPrinter[S]) printNodeHeader(step Step[S], prefix string, isLast bool, needNewline bool) bool {
 	name := StepName(step)
 	ptr := fmt.Sprintf("%p", step)
 
-	// Check for cycles/references
 	if p.visited[ptr] {
+		p.printNewLineIfNeeded(needNewline)
 		ref := ""
 		if p.opts.showReferences {
-			ref = fmt.Sprintf(" (ref to %s)", ptr)
+			ref = " (ref)"
 		}
-		p.printNewLineIfNeeded(needNewline)
-		connector := p.opts.connector
-		if isLast {
-			connector = p.opts.lastConnector
-		}
-		if prefix == "" {
-			fmt.Fprintf(p.opts.writer, "%s%s", name.String(), ref)
-			return
-		}
-		fmt.Fprintf(p.opts.writer, "%s%s%s%s", prefix, connector, name.String(), ref)
-		return
+		fmt.Fprintf(p.opts.writer, "%s%s%s%s", prefix, p.connector(isLast), name.String(), ref)
+		return false
 	}
 	p.visited[ptr] = true
 
 	p.printNewLineIfNeeded(needNewline)
 
-	connector := p.opts.connector
-	if isLast {
-		connector = p.opts.lastConnector
-	}
-
 	if prefix == "" {
 		fmt.Fprintf(p.opts.writer, "%s", name.String())
-	} else {
-		fmt.Fprintf(p.opts.writer, "%s%s%s", prefix, connector, name.String())
+		return true
+	}
+
+	fmt.Fprintf(p.opts.writer, "%s%s%s", prefix, p.connector(isLast), name.String())
+	return true
+}
+
+// printDefault is the standard printing for most steps
+func (p *dagPrinter[S]) printDefault(step Step[S], prefix string, isLast bool, needNewline bool) {
+	if !p.printNodeHeader(step, prefix, isLast, needNewline) {
+		return
 	}
 
 	// Get children and print them
@@ -137,16 +136,15 @@ func (p *dagPrinter[S]) printDefault(step Step[S], prefix string, isLast bool, n
 
 // printWithLabel prints a step with an optional label
 func (p *dagPrinter[S]) printWithLabel(step Step[S], prefix string, isLast bool, label string) {
+	p.printNewLine()
+
+	connector := p.connector(isLast)
+	labelStr := ""
+	if p.opts.showLabels && label != "" {
+		labelStr = label
+	}
+
 	if step == nil {
-		p.printNewLine()
-		connector := p.opts.connector
-		if isLast {
-			connector = p.opts.lastConnector
-		}
-		labelStr := ""
-		if p.opts.showLabels && label != "" {
-			labelStr = label
-		}
 		fmt.Fprintf(p.opts.writer, "%s%snil%s", prefix, connector, labelStr)
 		return
 	}
@@ -157,35 +155,13 @@ func (p *dagPrinter[S]) printWithLabel(step Step[S], prefix string, isLast bool,
 	if p.visited[ptr] {
 		ref := ""
 		if p.opts.showReferences {
-			ref = fmt.Sprintf(" (ref to %s)", ptr)
-		}
-
-		p.printNewLine()
-		connector := p.opts.connector
-		if isLast {
-			connector = p.opts.lastConnector
-		}
-		labelStr := ""
-		if p.opts.showLabels && label != "" {
-			labelStr = label
+			ref = " (ref)"
 		}
 		fmt.Fprintf(p.opts.writer, "%s%s%s%s%s", prefix, connector, name.String(), ref, labelStr)
 		return
 	}
 
-	// First time visiting this node
 	p.visited[ptr] = true
-	p.printNewLine()
-	connector := p.opts.connector
-	if isLast {
-		connector = p.opts.lastConnector
-	}
-
-	labelStr := ""
-	if p.opts.showLabels && label != "" {
-		labelStr = label
-	}
-
 	fmt.Fprintf(p.opts.writer, "%s%s%s%s", prefix, connector, name.String(), labelStr)
 
 	// Get children and print them
@@ -222,39 +198,8 @@ func (p *dagPrinter[S]) printNewLineIfNeeded(needNewline bool) {
 
 // Custom printing implementation for resultStep
 func (s *resultStep[S]) printDAG(p *dagPrinter[S], prefix string, isLast bool, needNewline bool) {
-	name := StepName[S](s)
-	ptr := fmt.Sprintf("%p", s)
-
-	// Check for cycles
-	if p.visited[ptr] {
-		if !p.opts.showReferences {
-			return
-		}
-		p.printNewLineIfNeeded(needNewline)
-		connector := p.opts.connector
-		if isLast {
-			connector = p.opts.lastConnector
-		}
-		if prefix == "" {
-			fmt.Fprintf(p.opts.writer, "%s (ref)", name.String())
-			return
-		}
-		fmt.Fprintf(p.opts.writer, "%s%s%s (ref)", prefix, connector, name.String())
+	if !p.printNodeHeader(s, prefix, isLast, needNewline) {
 		return
-	}
-	p.visited[ptr] = true
-
-	p.printNewLineIfNeeded(needNewline)
-
-	connector := p.opts.connector
-	if isLast {
-		connector = p.opts.lastConnector
-	}
-
-	if prefix == "" {
-		fmt.Fprintf(p.opts.writer, "%s", name.String())
-	} else {
-		fmt.Fprintf(p.opts.writer, "%s%s%s", prefix, connector, name.String())
 	}
 
 	// Calculate child prefix

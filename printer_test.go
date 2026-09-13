@@ -197,6 +197,13 @@ func TestPrintDAG_SharedReferences(t *testing.T) {
 				return Result(shared, OnSuccess(shared))
 			},
 		},
+		{
+			name: "repeated resultStep in series creates reference",
+			buildStep: func() Step[struct{}] {
+				rs := Result(NewStep(testNoopStep), OnSuccess(NewStep(testNoopStep)))
+				return Series(rs, rs)
+			},
+		},
 	}
 
 	for _, tc := range sharedRefTests {

@@ -63,6 +63,11 @@ func TestStepName(t *testing.T) {
 			step: func() Step[struct{}] { return &testStep{} },
 			want: "testStep",
 		},
+		{
+			name: "NilStep",
+			step: func() Step[struct{}] { return nil },
+			want: "nil",
+		},
 	}
 
 	for _, tc := range testcases {
