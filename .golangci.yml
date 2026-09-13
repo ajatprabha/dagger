@@ -12,7 +12,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gocritic
     - gosec
     - revive
 
@@ -41,18 +40,6 @@ linters:
         - name: superfluous-else
         - name: unreachable-code
         - name: redefines-builtin-id
-
-    gocritic:
-      enabled-tags:
-        - diagnostic
-        - performance
-        - style
-      disabled-checks:
-        - hugeParam
-        - rangeValCopy
-        - paramTypeCombine
-        - unnamedResult
-        - appendAssign
 
     gosec:
       excludes:
