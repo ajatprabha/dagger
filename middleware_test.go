@@ -33,27 +33,100 @@ func testLogMiddleware[S any](w io.Writer, prefix string) MiddlewareFunc[S] {
 	}
 }
 
+func TestMiddlewareFunc_Wrap(t *testing.T) {
+	t.Run("Single", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+
+		mw := testLogMiddleware[struct{}](buf, "L1")
+
+		steps := Series(
+			NewStep(func(ctx context.Context, state struct{}) error { return nil }),
+		)
+
+		step := mw.Wrap(steps)
+
+		err := step.Exec(context.TODO(), struct{}{})
+		assert.NoError(t, err)
+		assert.Equal(t, `L1: Starting step seriesStep[struct {}]
+L1: seriesStep[struct {}] done
+`, buf.String())
+	})
+}
+
 func TestMiddlewareChain_Wrap(t *testing.T) {
 	t.Run("Stacked", func(t *testing.T) {
 		buf := new(bytes.Buffer)
 
 		chain := NewChain(
-			testLogMiddleware[testState](buf, "L1"),
-			testLogMiddleware[testState](buf, "L2"),
+			testLogMiddleware[struct{}](buf, "L1"),
+			testLogMiddleware[struct{}](buf, "L2"),
 		)
 
 		steps := Series(
-			NewStep(func(ctx context.Context, state testState) error { return nil }),
+			NewStep(func(ctx context.Context, state struct{}) error { return nil }),
 		)
 
 		step := chain.Wrap(steps)
 
-		err := step.Exec(context.TODO(), testState{})
+		err := step.Exec(context.TODO(), struct{}{})
 		assert.NoError(t, err)
-		assert.Equal(t, `L1: Starting step seriesStep[testState]
-L2: Starting step seriesStep[testState]
-L2: seriesStep[testState] done
-L1: seriesStep[testState] done
+		assert.Equal(t, `L1: Starting step seriesStep[struct {}]
+L2: Starting step seriesStep[struct {}]
+L2: seriesStep[struct {}] done
+L1: seriesStep[struct {}] done
 `, buf.String())
 	})
+}
+
+func Test_canSkipMiddleware(t *testing.T) {
+	testcases := []struct {
+		name string
+		step Step[struct{}]
+	}{
+		{
+			name: "If",
+			step: If(alwaysTrue, NewStep(func(context.Context, struct{}) error { return nil })),
+		},
+		{
+			name: "IfNot",
+			step: IfNot(alwaysTrue, NewStep(func(context.Context, struct{}) error { return nil })),
+		},
+		{
+			name: "IfElse",
+			step: IfElse(alwaysTrue,
+				NewStep(func(context.Context, struct{}) error { return nil }),
+				NewStep(func(context.Context, struct{}) error { return nil }),
+			),
+		},
+		{
+			name: "Result",
+			step: Result(
+				NewStep(func(context.Context, struct{}) error { return nil }),
+				OnSuccess(NewStep(func(context.Context, struct{}) error { return nil })),
+				OnError(NewStep(func(context.Context, struct{}) error { return nil })),
+			),
+		},
+		{
+			name: "Series",
+			step: Series(
+				NewStep(func(context.Context, struct{}) error { return nil }),
+				NewStep(func(context.Context, struct{}) error { return nil }),
+			),
+		},
+		{
+			name: "Continue",
+			step: Continue(
+				NewStep(func(context.Context, struct{}) error { return nil }),
+				NewStep(func(context.Context, struct{}) error { return nil }),
+			),
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, ok := tc.step.(middlewareSkipper)
+			assert.True(t, ok)
+			assert.True(t, f.CanSkipMiddleware())
+		})
+	}
 }

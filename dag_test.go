@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExecutor_Use(t *testing.T) {
 	type useState struct{ indent int }
-	type useStep = Step[useState]
+	// type useStep = Step[useState]
 
 	validateResource := func(ctx context.Context, state useState) error { return nil }
 	createResource := func(ctx context.Context, state useState) error { return nil }
@@ -25,15 +26,13 @@ func TestExecutor_Use(t *testing.T) {
 				NewStep(reportSuccess),
 				Result(
 					NewStep(createResource),
-					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					OnSuccess(NewStep(reportSuccess)),
+					OnError(NewStep(reportFailure)),
 				),
 			),
 		)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		buf := new(bytes.Buffer)
 		buf.WriteString("\n")
@@ -50,7 +49,7 @@ func TestExecutor_Use(t *testing.T) {
 		)
 
 		err = dag.Exec(context.TODO(), useState{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Equal(t, `
 dagger:seriesStep[useState·1]
@@ -69,10 +68,8 @@ dagger:seriesStep[useState·1]
 				NewStep(reportSuccess),
 				Result(
 					NewStep(createResource),
-					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					OnSuccess(NewStep(reportSuccess)),
+					OnError(NewStep(reportFailure)),
 				),
 				Series(
 					If(
@@ -96,7 +93,7 @@ dagger:seriesStep[useState·1]
 			),
 		)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		buf := new(bytes.Buffer)
 		buf.WriteString("\n")
@@ -118,18 +115,18 @@ dagger:seriesStep[useState·1]
 		)
 
 		err = dag.Exec(context.TODO(), useState{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Equal(t, `
 dagger:TestExecutor_Use.func1
 dagger:TestExecutor_Use.func3
 	dagger:TestExecutor_Use.func2
 	dagger:TestExecutor_Use.func3
-		dagger:TestExecutor_Use.func6.3
-		dagger:TestExecutor_Use.func6.5
-		dagger:TestExecutor_Use.func6.7
+		dagger:TestExecutor_Use.func6.2
+		dagger:TestExecutor_Use.func6.4
+		dagger:TestExecutor_Use.func6.6
+	dagger:TestExecutor_Use.func6.8
 	dagger:TestExecutor_Use.func6.9
-	dagger:TestExecutor_Use.func6.10
 `, buf.String())
 	})
 
@@ -140,15 +137,13 @@ dagger:TestExecutor_Use.func3
 				NewStep(reportSuccess),
 				Result(
 					NewStep(createResource),
-					NewStep(reportSuccess),
-					func(ctx context.Context, state useState, err error) useStep {
-						return NewStep(reportFailure)
-					},
+					OnSuccess(NewStep(reportSuccess)),
+					OnError(NewStep(reportFailure)),
 				),
 			),
 		)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		buf := new(bytes.Buffer)
 
@@ -158,7 +153,7 @@ dagger:TestExecutor_Use.func3
 		)
 
 		err = dag.Exec(context.TODO(), useState{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Equal(t, `L1: Starting step seriesStep[useState·1]
 L2: Starting step seriesStep[useState·1]
@@ -188,20 +183,20 @@ L1: seriesStep[useState·1] done
 	})
 }
 
-func Test_buildDAG(t *testing.T) {
-	trueCondition := func(s dummyState) bool { return true }
+func Test_checkDAGCycles(t *testing.T) {
+	trueCondition := func(s struct{}) bool { return true }
 
 	step0 := NewStep(setDBState)
-	step1then := &ifStep[dummyState]{
+	step1then := &ifStep[struct{}]{
 		condition: trueCondition,
 		thenStep:  step0,
 	}
-	step1 := &ifElseStep[dummyState]{
+	step1 := &ifElseStep[struct{}]{
 		condition: trueCondition,
 		thenStep:  step1then,
 	}
-	step1ContinueStep := &continueStep[dummyState]{
-		steps: []Step[dummyState]{NewStep(setDBErr), NewStep(updateDB)},
+	step1ContinueStep := &continueStep[struct{}]{
+		steps: []Step[struct{}]{NewStep(setDBErr), NewStep(updateDB)},
 	}
 	step1.elseStep = step1ContinueStep
 
@@ -209,24 +204,34 @@ func Test_buildDAG(t *testing.T) {
 	step3 := NewStep(deleteResource)
 	step4 := NewStep(publishKafka)
 	step5 := NewStep(updateDB)
-	resultStep := &resultStep[dummyState]{
-		mainStep:    step2,
-		successStep: step3,
-		failureHandler: func(ctx context.Context, state dummyState, err error) Step[dummyState] {
-			return step4
-		},
+	resultStep := &resultStep[struct{}]{
+		mainStep:       step2,
+		successStep:    step3,
+		failureHandler: &singleStepHandler[struct{}]{step: step4},
 	}
 
-	rootStep := &ifElseStep[dummyState]{
+	rootStep := &ifElseStep[struct{}]{
 		condition: trueCondition,
 		thenStep:  step1,
-		elseStep: &seriesStep[dummyState]{
-			steps: []Step[dummyState]{resultStep, step5},
+		elseStep: &seriesStep[struct{}]{
+			steps: []Step[struct{}]{resultStep, step5},
 		},
 	}
 
 	t.Run("acyclic dag", func(t *testing.T) {
-		err := checkDAGCycles(rootStep)
+		err := checkDAGCycles[struct{}](rootStep)
+		assert.NoError(t, err)
+	})
+
+	t.Run("acyclic dag with value-based steps", func(t *testing.T) {
+		step1 := testValueStep{value: "v1"}
+		step2 := testValueStep{value: "v2"}
+		err := checkDAGCycles[struct{}](Series[struct{}](step1, step2))
+		assert.NoError(t, err)
+	})
+
+	t.Run("acyclic dag with nil step", func(t *testing.T) {
+		err := checkDAGCycles[struct{}](nil)
 		assert.NoError(t, err)
 	})
 
@@ -234,62 +239,46 @@ func Test_buildDAG(t *testing.T) {
 		errCycle := new(ErrCycle)
 
 		resultStep.successStep = resultStep
-		_, err := New(rootStep)
+		_, err := New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:resultStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:resultStep[struct {}]", errCycle.stepName.String())
 		resultStep.successStep = step3
 
 		resultStep.mainStep = rootStep.elseStep
-		_, err = New(rootStep)
+		_, err = New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:seriesStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:seriesStep[struct {}]", errCycle.stepName.String())
 		resultStep.mainStep = step2
 
 		rootStep.thenStep = rootStep
-		_, err = New(rootStep)
+		_, err = New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:ifElseStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:ifElseStep[struct {}]", errCycle.stepName.String())
 		rootStep.thenStep = step1
 
 		rootStep.elseStep = rootStep
-		_, err = New(rootStep)
+		_, err = New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:ifElseStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:ifElseStep[struct {}]", errCycle.stepName.String())
 		rootStep.thenStep = step1
 
 		step1then.thenStep = step1then
-		_, err = New(rootStep)
+		_, err = New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:ifStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:ifStep[struct {}]", errCycle.stepName.String())
 		step1then.thenStep = step0
 
 		ogStep := step1ContinueStep.steps[0]
 		step1ContinueStep.steps[0] = step1ContinueStep
-		_, err = New(rootStep)
+		_, err = New[struct{}](rootStep)
 		assert.ErrorAs(t, err, &errCycle)
-		assert.Equal(t, "dagger:continueStep[dummyState]", errCycle.stepName.String())
+		assert.Equal(t, "dagger:continueStep[struct {}]", errCycle.stepName.String())
 		step1ContinueStep.steps[0] = ogStep
 	})
 }
 
-type dummyState struct{}
-
-func setDBState(ctx context.Context, state dummyState) error {
-	return nil
-}
-
-func deleteResource(ctx context.Context, state dummyState) error {
-	return nil
-}
-
-func publishKafka(ctx context.Context, state dummyState) error {
-	return nil
-}
-
-func setDBErr(ctx context.Context, state dummyState) error {
-	return nil
-}
-
-func updateDB(ctx context.Context, state dummyState) error {
-	return nil
-}
+func setDBState(_ context.Context, _ struct{}) error     { return nil }
+func deleteResource(_ context.Context, _ struct{}) error { return nil }
+func publishKafka(_ context.Context, _ struct{}) error   { return nil }
+func setDBErr(_ context.Context, _ struct{}) error       { return nil }
+func updateDB(_ context.Context, _ struct{}) error       { return nil }

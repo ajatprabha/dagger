@@ -97,25 +97,16 @@ func ExampleResult() {
 	reportFailure := func(ctx context.Context, state exampleState) error { return nil }
 
 	// Tip: Create a type alias like this to avoid using go generic syntax everywhere.
-	type exampleStateStep = dagger.Step[exampleState]
+	// type exampleStateStep = dagger.Step[exampleState]
 
 	dag, err := dagger.New(
 		dagger.Result(
 			// Result first executes the main Step
 			dagger.NewStep(createResource),
 			// It will then run the success Step, if main Step returned no error
-			dagger.NewStep(reportSuccess),
-			// Otherwise, it will run the success Step, if main Step returned an error
-			func(ctx context.Context, state exampleState, err error) exampleStateStep {
-				// Note: It is encouraged to test that `failureProcedure` has no cycles
-				// via unit tests.
-				// ```go
-				// _, err := dagger.New(failureProcedure)
-				// assertNoError(err)
-				// ```
-				failureProcedure := dagger.NewStep(reportFailure)
-				return failureProcedure
-			},
+			dagger.OnSuccess(dagger.NewStep(reportSuccess)),
+			// Otherwise, it will run the failure Step, if main Step returned an error
+			dagger.OnError(dagger.NewStep(reportFailure)),
 		),
 	)
 	if err != nil {
@@ -267,4 +258,56 @@ func ExampleGenericScopedName_TypeScopedName() {
 
 	// Output:
 	// int
+}
+
+func ExampleResult_switch() {
+	networkError := func(ctx context.Context, err error) bool {
+		return err != nil && err.Error() == "network error"
+	}
+
+	dag, err := dagger.New(
+		dagger.Result(
+			dagger.NewStep(func(ctx context.Context, state exampleState) error {
+				return nil
+			}),
+			dagger.OnSuccess(dagger.NewStep(func(ctx context.Context, state exampleState) error {
+				fmt.Println("Success")
+				return nil
+			})),
+			// Switch is useful if an action has to be taken based on what the error is
+			dagger.Switch[exampleState](
+				dagger.Case(networkError, dagger.NewStep(func(ctx context.Context, state exampleState) error {
+					fmt.Println("Handle network error")
+					return nil
+				})),
+				dagger.DefaultCase(dagger.NewStep(func(ctx context.Context, state exampleState) error {
+					fmt.Println("Handle default error")
+					return nil
+				})),
+			),
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := dag.Exec(context.Background(), exampleState{id: "example"}); err != nil {
+		panic(err)
+	}
+
+	// Output:
+	// Success
+}
+
+func ExamplePrintString() {
+	step := dagger.Series(
+		dagger.NewStep(func(ctx context.Context, state exampleState) error { return nil }),
+		dagger.NewStep(func(ctx context.Context, state exampleState) error { return nil }),
+	)
+
+	out := dagger.PrintString(step)
+	fmt.Println(out != "")
+
+	// Output:
+	// true
 }

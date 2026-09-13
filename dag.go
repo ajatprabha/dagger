@@ -5,7 +5,6 @@ package dagger
 
 import (
 	"context"
-	"fmt"
 )
 
 // Executor is the main struct that holds the DAG and the middlewares.
@@ -71,26 +70,33 @@ func checkDAGCycles[S any](step Step[S]) error {
 }
 
 func checkDAGRecursive[S any](step Step[S], visited map[string]struct{}) error {
-	name := StepName(step)
-	ptr := fmt.Sprintf("%p", step)
-
-	if _, found := visited[ptr]; found {
-		return &ErrCycle{stepName: name}
+	id, hasID := stepID(step)
+	if hasID {
+		if _, found := visited[id]; found {
+			return &ErrCycle{stepName: StepName(step)}
+		}
+		visited[id] = struct{}{}
 	}
 
-	visited[ptr] = struct{}{}
-
-	switch s := step.(type) {
-	case interface{ Unwrap() Step[S] }:
-		return checkDAGRecursive(s.Unwrap(), visited)
-	case interface{ Unwrap() []Step[S] }:
-		for _, childStep := range s.Unwrap() {
-			if err := checkDAGRecursive(childStep, visited); err != nil {
-				return err
-			}
+	for _, childStep := range unwrapper[S](step) {
+		if err := checkDAGRecursive(childStep, visited); err != nil {
+			return err
 		}
 	}
 
-	delete(visited, ptr)
+	if hasID {
+		delete(visited, id)
+	}
 	return nil
+}
+
+func unwrapper[S any](step any) []Step[S] {
+	switch s := step.(type) {
+	case interface{ Unwrap() Step[S] }:
+		return []Step[S]{s.Unwrap()}
+	case interface{ Unwrap() []Step[S] }:
+		return s.Unwrap()
+	default:
+		return nil
+	}
 }
