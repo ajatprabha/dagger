@@ -29,9 +29,24 @@ It provides composable control-flow primitives to model complex business workflo
 
 ## Installation
 
+### Go Library
+
+Add `dagger` to your Go module:
+
 ```bash
 go get github.com/ajatprabha/dagger
 ```
+
+### Dagger CLI (Visual DAG Reviews)
+
+Install the standalone `dagger` CLI to statically discover DAGs across your codebase and launch interactive visual reviews in your browser:
+
+```bash
+go install github.com/ajatprabha/dagger/cmd/dagger@latest
+```
+
+> [!TIP]
+> Ensure `$(go env GOPATH)/bin` (or `~/go/bin`) is in your system's `PATH` so you can run `dagger` directly from any directory.
 
 ---
 
@@ -480,23 +495,37 @@ The `cmd/dagger` CLI tool uses Go's standard library AST parser (`go/parser`, `g
 - **One-Click Mermaid Export**: Copy the raw Mermaid flowchart template directly to your clipboard or print it to `stdout` to embed into Pull Request descriptions, design proposals, or Architecture Decision Records (ADRs).
 - **Layout Toggles**: Switch between Top-Down (`TD`) and Left-to-Right (`LR`) layouts to fit the shape of your pipeline.
 
+#### Installation:
+
+Install the standalone `dagger` CLI binary using `go install`:
+
+```bash
+go install github.com/ajatprabha/dagger/cmd/dagger@latest
+```
+
 #### CLI Commands:
 
 ```bash
 # Launch the interactive web dashboard (defaults to http://localhost:8080)
-go run ./cmd/dagger
+dagger
 
 # Scan a specific directory or package
-go run ./cmd/dagger -dir ./examples/reconciler
+dagger -dir ./examples/reconciler
 
 # List all discovered DAGs across the codebase
-go run ./cmd/dagger -list
+dagger -list
 
 # Output raw Mermaid flowchart directly to stdout
-go run ./cmd/dagger -select BuildDAG -stdout
+dagger -select BuildDAG -stdout
 
 # Output Mermaid in Left-to-Right orientation
-go run ./cmd/dagger -select BuildDAG -orientation LR -stdout
+dagger -select BuildDAG -orientation LR -stdout
+```
+
+Alternatively, you can run it directly without installing:
+
+```bash
+go run github.com/ajatprabha/dagger/cmd/dagger@latest
 ```
 
 ---
