@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // DAGViewModel holds DAG metadata along with precomputed Mermaid diagrams.
@@ -73,7 +74,7 @@ func createMux(dags []*DiscoveredDAG, defaultOrientation string) http.Handler {
 			DefaultOrientation string
 			FirstDAGName       string
 		}{
-			DAGsJSON:           template.JS(dataJSON),
+			DAGsJSON:           template.JS(dataJSON), //nolint:gosec // G203: dataJSON is produced by json.Marshal from AST models, not user input
 			DAGCount:           len(viewModels),
 			DefaultOrientation: defaultOrientation,
 		}
@@ -142,8 +143,9 @@ func createMux(dags []*DiscoveredDAG, defaultOrientation string) http.Handler {
 func startServer(addr string, dags []*DiscoveredDAG, defaultOrientation string) error {
 	handler := createMux(dags, defaultOrientation)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 	fmt.Printf("dagger visualizer serving %d DAG(s) at http://%s\n", len(dags), addr)
 	return server.ListenAndServe()

@@ -37,8 +37,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if *flagList {
-		printDAGList(stdout, dags)
-		return nil
+		return printDAGList(stdout, dags)
 	}
 
 	if *flagStdout {
@@ -53,20 +52,27 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Serve HTTP dashboard by default or when -serve is passed
 	if len(dags) == 0 {
-		fmt.Fprintf(stderr, "Warning: no DAGs discovered in %s\n", *flagDir)
+		if _, err := fmt.Fprintf(stderr, "Warning: no DAGs discovered in %s\n", *flagDir); err != nil {
+			return err
+		}
 	}
 	return startServer(*flagServe, dags, *flagOrientation)
 }
 
-func printDAGList(w io.Writer, dags []*DiscoveredDAG) {
+func printDAGList(w io.Writer, dags []*DiscoveredDAG) error {
 	if len(dags) == 0 {
-		fmt.Fprintln(w, "No DAGs discovered.")
-		return
+		_, err := fmt.Fprintln(w, "No DAGs discovered.")
+		return err
 	}
-	fmt.Fprintf(w, "Discovered %d DAG(s):\n", len(dags))
+	if _, err := fmt.Fprintf(w, "Discovered %d DAG(s):\n", len(dags)); err != nil {
+		return err
+	}
 	for i, d := range dags {
-		fmt.Fprintf(w, "[%d] %s (%s) - %s:%d (ID: %s)\n", i, d.Name, d.Package, d.File, d.Line, d.ID)
+		if _, err := fmt.Fprintf(w, "[%d] %s (%s) - %s:%d (ID: %s)\n", i, d.Name, d.Package, d.File, d.Line, d.ID); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func selectDAG(dags []*DiscoveredDAG, pattern string) (*DiscoveredDAG, error) {

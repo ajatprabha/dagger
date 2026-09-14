@@ -29,7 +29,7 @@ func GenerateMermaid(root ast.Expr, orientation string) string {
 	_ = res // entry and exits used during build
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("flowchart %s\n", g.orientation))
+	fmt.Fprintf(&sb, "flowchart %s\n", g.orientation)
 
 	// Node definitions
 	for _, nodeDef := range g.nodeDefs {
@@ -50,11 +50,11 @@ func GenerateMermaid(root ast.Expr, orientation string) string {
 		sb.WriteString("\n")
 		if len(g.stepNodeIDs) > 0 {
 			sb.WriteString("    classDef step fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,rx:6px,ry:6px;\n")
-			sb.WriteString(fmt.Sprintf("    class %s step;\n", strings.Join(g.stepNodeIDs, ",")))
+			fmt.Fprintf(&sb, "    class %s step;\n", strings.Join(g.stepNodeIDs, ","))
 		}
 		if len(g.condNodeIDs) > 0 {
 			sb.WriteString("    classDef cond fill:#fef3c7,stroke:#d97706,stroke-width:2px;\n")
-			sb.WriteString(fmt.Sprintf("    class %s cond;\n", strings.Join(g.condNodeIDs, ",")))
+			fmt.Fprintf(&sb, "    class %s cond;\n", strings.Join(g.condNodeIDs, ","))
 		}
 	}
 
