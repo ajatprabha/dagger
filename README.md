@@ -23,6 +23,7 @@ It provides composable control-flow primitives to model complex business workflo
 - 🔌 **Composable Middlewares**: Intercept steps for cross-cutting observability, including distributed tracing (OpenTelemetry, Datadog), structured logging (`slog`, `logr`), latency histograms, and retries.
 - 🏷️ **Zero-Boilerplate Step Introspection**: Reflection-based namer automatically extracts clean, human-readable names for standalone functions, struct methods (`*Service.Method`), and generic types.
 - 🌳 **DAG Visualization**: Built-in ASCII/Unicode tree printer (`Print`, `PrintString`) for inspecting, logging, and debugging DAG topologies at runtime or during tests.
+- 📊 **Interactive Web Visualizer & CLI (`cmd/dagger`)**: Statically discovers all DAGs across your codebase using Go's standard library AST parser, renders Mermaid.js flowcharts, and serves an interactive web dashboard with pan/zoom and orientation toggles—pure stdlib, zero third-party dependencies!
 
 ---
 
@@ -464,7 +465,45 @@ func (p ProvisionStorageStep) Exec(ctx context.Context, state *ClusterState) err
 
 ## Visualizing the DAG
 
-You can print the entire graph topology using `dagger.Print` or `dagger.PrintString`. This is especially useful for logging pipeline structures at application startup, debugging complex graphs, or verifying graph layout in unit tests:
+`dagger` provides both an **interactive web visualizer (CLI)** and an **in-terminal ASCII/Unicode tree printer** to inspect and communicate pipeline topologies.
+
+### 1. Interactive Web Visualizer & CLI (`cmd/dagger`)
+
+The `cmd/dagger` CLI tool uses Go's standard library AST parser (`go/parser`, `go/ast`) to statically discover all DAG definitions in your codebase and serve an interactive visualizer powered by Mermaid.js:
+
+![Dagger Interactive Visualizer](assets/dagger-view.png)
+
+#### Why Visualization is Helpful:
+- **Architectural Clarity & Rapid Review**: Complex production workflows—especially declarative reconcilers with multi-branch error recovery, fallbacks, and conditional rollbacks—can be difficult to trace through raw code alone. A visual graph makes execution flow, dependencies, and failure branches immediately obvious.
+- **Zero-Configuration Static AST Discovery**: Pure Go standard library—no new dependencies, no code generation, and no need to compile or run your application. Just run `dagger` in your project directory.
+- **Interactive Canvas with Pan & Zoom**: Smooth mouse-drag panning, cursor-centered wheel zooming, auto-fit, and keyboard shortcuts (`+`, `-`, `0`, `f`) let you navigate enterprise-scale pipelines with ease.
+- **One-Click Mermaid Export**: Copy the raw Mermaid flowchart template directly to your clipboard or print it to `stdout` to embed into Pull Request descriptions, design proposals, or Architecture Decision Records (ADRs).
+- **Layout Toggles**: Switch between Top-Down (`TD`) and Left-to-Right (`LR`) layouts to fit the shape of your pipeline.
+
+#### CLI Commands:
+
+```bash
+# Launch the interactive web dashboard (defaults to http://localhost:8080)
+go run ./cmd/dagger
+
+# Scan a specific directory or package
+go run ./cmd/dagger -dir ./examples/reconciler
+
+# List all discovered DAGs across the codebase
+go run ./cmd/dagger -list
+
+# Output raw Mermaid flowchart directly to stdout
+go run ./cmd/dagger -select BuildDAG -stdout
+
+# Output Mermaid in Left-to-Right orientation
+go run ./cmd/dagger -select BuildDAG -orientation LR -stdout
+```
+
+---
+
+### 2. In-Terminal Tree Printer (`Print`, `PrintString`)
+
+You can also print the entire graph topology to `stdout`, logs, or a string using `dagger.Print` or `dagger.PrintString`. This is especially useful for logging pipeline structures at application startup, debugging complex graphs, or verifying graph layout in unit tests:
 
 ```go
 dagTree := dagger.PrintString(pipeline)
@@ -483,7 +522,7 @@ dagger:seriesStep[*ClusterState]
         └── controller:*ClusterReconciler.rollbackUnhealthyNodes [failure]
 ```
 
-### Printer Customization Options
+#### Printer Customization Options
 
 The printer accepts functional options for styling:
 
