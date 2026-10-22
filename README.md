@@ -5,52 +5,49 @@
 [![PkgGoDev][pkg-go-dev-badge]][pkg-go-dev]
 [![Go Report Card][go-report-card-badge]][go-report-card]
 
-`dagger` is a lightweight, type-safe Go library for composing, executing, and visualizing **Directed Acyclic Graphs (DAGs)**.
+**Build Go workflows from small, typed steps. Then trace them, print them, and review them as a diagram.**
 
-It provides composable control-flow primitives to model complex business workflows, declarative state reconcilers (such as Kubernetes operators and cloud resource orchestrators), multi-step transactional routines, and data processing pipelines without deeply nested conditionals or spaghetti code.
+`dagger` is a lightweight Go library for workflows that are **Directed Acyclic Graphs (DAGs)**.
+You write each step as a plain Go function.
+`dagger` connects the steps with sequence, branch, and error-routing primitives.
+You get a workflow that is easy to read, test, observe, and review.
 
----
+<p align="center">
+  <img src="assets/banner/dagger-banner.png" alt="dagger: a trace of one workflow. Steps run in series, a custom parallel step runs three steps at the same time, a transient DNS error is retried, and a rate-limit error is routed to a recovery step." width="100%">
+</p>
 
-## Features
+## Why dagger?
 
-- 🛡️ **Compile-Time Type Safety**: Built with Go generics (`Step[S]`), passing strongly typed state throughout your entire pipeline without reflection overhead or `any` casts.
-- 🔄 **Graph Validation & Cycle Detection**: Automatically detects cycles and structural flaws during graph construction before any step executes.
-- 🔀 **Expressive Control Flow**:
-  - `Series`: Sequential pipelines that halt on the first error.
-  - `Continue`: Resilient pipelines that execute all steps and accumulate errors with `errors.Join`.
-  - `If`, `IfNot`, `IfElse`: State-driven conditional branching using predicate selectors.
-  - `Result`: Flexible outcome branching (`OnSuccess`, `OnError`), contextual error access (`NewResultErrStep`), and multi-branch error pattern matching (`Switch`, `Case`, `DefaultCase`).
-- 🔌 **Composable Middlewares**: Intercept steps for cross-cutting observability, including distributed tracing (OpenTelemetry, Datadog), structured logging (`slog`, `logr`), latency histograms, and retries.
-- 🏷️ **Zero-Boilerplate Step Introspection**: Reflection-based namer automatically extracts clean, human-readable names for standalone functions, struct methods (`*Service.Method`), and generic types.
-- 🌳 **DAG Visualization**: Built-in ASCII/Unicode tree printer (`Print`, `PrintString`) for inspecting, logging, and debugging DAG topologies at runtime or during tests.
-- 📊 **Interactive Web Visualizer & CLI (`cmd/dagger`)**: Statically discovers all DAGs across your codebase using Go's standard library AST parser, renders Mermaid.js flowcharts, and serves an interactive web dashboard with pan/zoom and orientation toggles—pure stdlib, zero third-party dependencies!
+- **Flat, declarative flow.** Declare the flow once. Do not write deeply nested `if` and `if err != nil` blocks.
+- **Type-safe state.** Go generics (`Step[S]`) carry your state type through all steps. You do not need `any` casts.
+- **Validated before it runs.** `dagger.New` rejects cycles and invalid graphs before the first step starts.
+- **Observability in one place.** One middleware adds tracing, logs, metrics, or retries to every step.
+- **Extensible.** Write your own control-flow step, such as a parallel step.
+- **Automatic step names.** `dagger` gets readable names from your functions and methods. Traces and logs use these names.
+- **A diagram of your code.** Print the graph as a tree, or open an interactive diagram with the `dagger` CLI.
+- **No runtime dependencies.** The library and the CLI use only the Go standard library.
 
----
+**Good fits:** Kubernetes operators and reconcilers, cloud resource orchestrators, multi-step transactions with rollback, data pipelines, and business workflows.
 
 ## Installation
 
-### Go Library
-
-Add `dagger` to your Go module:
+Add the library to your Go module:
 
 ```bash
 go get github.com/ajatprabha/dagger
 ```
 
-### Dagger CLI (Visual DAG Reviews)
-
-Install the standalone `dagger` CLI to statically discover DAGs across your codebase and launch interactive visual reviews in your browser:
+Install the optional `dagger` CLI to see your DAGs in a browser:
 
 ```bash
 go install github.com/ajatprabha/dagger/cmd/dagger@latest
 ```
 
 > [!TIP]
-> Ensure `$(go env GOPATH)/bin` (or `~/go/bin`) is in your system's `PATH` so you can run `dagger` directly from any directory.
+> Make sure that `$(go env GOPATH)/bin` (usually `~/go/bin`) is in your `PATH`.
+> Then you can run `dagger` from any directory.
 
----
-
-## Quick Start
+## Quick start
 
 ```go
 package main
@@ -63,14 +60,14 @@ import (
 	"github.com/ajatprabha/dagger"
 )
 
-// 1. Define your workflow state
+// 1. Define the workflow state.
 type ProvisionState struct {
 	ResourceID string
 	ClusterIP  string
 	Ready      bool
 }
 
-// 2. Define steps as functions
+// 2. Write each step as a function.
 func allocateIP(ctx context.Context, state *ProvisionState) error {
 	state.ClusterIP = "10.0.0.42"
 	fmt.Printf("Allocated IP: %s\n", state.ClusterIP)
@@ -84,19 +81,19 @@ func verifyHealth(ctx context.Context, state *ProvisionState) error {
 }
 
 func main() {
-	// 3. Compose steps into a pipeline
+	// 3. Compose the steps.
 	pipeline := dagger.Series(
 		dagger.NewStep(allocateIP),
 		dagger.NewStep(verifyHealth),
 	)
 
-	// 4. Initialize executor with cycle validation
+	// 4. Build the executor. This step validates the graph.
 	dag, err := dagger.New(pipeline)
 	if err != nil {
 		log.Fatalf("Invalid DAG: %v", err)
 	}
 
-	// 5. Execute with initial state
+	// 5. Run the workflow with an initial state.
 	state := &ProvisionState{ResourceID: "res-123"}
 	if err := dag.Exec(context.Background(), state); err != nil {
 		log.Fatalf("Pipeline failed: %v", err)
@@ -106,32 +103,16 @@ func main() {
 }
 ```
 
----
+## Core concepts
 
-## Core Concepts
+| Concept | Type | What it does |
+| --- | --- | --- |
+| **State** | `S any` | Your own type. Each step gets it to read input and write output. |
+| **Step** | `Step[S]` | One unit of work: `Exec(ctx context.Context, state S) error`. |
+| **Executor** | `*Executor[S]` | Holds the validated graph and its middleware. Runs the workflow with `Exec`. |
 
-### 1. State (`S any`)
-State in `dagger` is parameterized via Go generics. It is passed to every step during execution, allowing steps to read input, record intermediate progress, and persist output:
-
-```go
-type OrderState struct {
-    OrderID string
-    UserID  string
-    Total   float64
-    Paid    bool
-}
-```
-
-### 2. Step (`Step[S any]`)
-The fundamental unit of execution in `dagger` is the `Step[S]` interface:
-
-```go
-type Step[S any] interface {
-    Exec(ctx context.Context, state S) error
-}
-```
-
-You can implement `Step[S]` directly with custom structs or adapt standard Go functions using `dagger.NewStep`:
+Use `dagger.NewStep` to make a step from a function.
+You can also implement `Step[S]` on your own struct.
 
 ```go
 step := dagger.NewStep(func(ctx context.Context, state *OrderState) error {
@@ -140,29 +121,38 @@ step := dagger.NewStep(func(ctx context.Context, state *OrderState) error {
 })
 ```
 
-### 3. Executor (`Executor[S any]`)
-The `Executor[S]` holds the validated DAG and configured middlewares. Building an executor via `dagger.New` verifies that the graph is free of cycles:
+`dagger.New` examines the full graph before the first step runs.
+If the graph is not valid, `New` returns `*dagger.ErrInvalid`.
+If a step refers to one of its ancestors, the cause is `*dagger.ErrCycle`.
 
 ```go
-dag, err := dagger.New(startStep)
+dag, err := dagger.New(rootStep)
 if err != nil {
-    // Returns *dagger.ErrInvalid or *dagger.ErrCycle if cyclic
+    var cycleErr *dagger.ErrCycle
+    if errors.As(err, &cycleErr) {
+        log.Fatalf("Graph validation error: %v", cycleErr)
+    }
     log.Fatalf("DAG validation failed: %v", err)
-}
-
-if err := dag.Exec(ctx, state); err != nil {
-    log.Printf("Execution failed: %v", err)
 }
 ```
 
----
+## Control flow
 
-## Control Flow Constructs
+| Primitive | Behavior |
+| --- | --- |
+| `Series(steps...)` | Runs steps in sequence. Stops at the first error. |
+| `Continue(steps...)` | Runs all steps in sequence. Joins all errors with `errors.Join`. |
+| `If(sel, step)` | Runs `step` when `sel(state)` is `true`. |
+| `IfNot(sel, step)` | Runs `step` when `sel(state)` is `false`. |
+| `IfElse(sel, then, else)` | Runs `then` or `else`, based on `sel(state)`. |
+| `Result(main, opts...)` | Runs `main`, then routes to `OnSuccess`, `OnError`, or `Switch`. |
 
-`dagger` provides built-in control-flow steps to construct branching and sequential workflows:
+A selector is a `Selector[S]`, which is `func(state S) bool`.
 
-### `Series` (Fail-Fast Sequence)
-Executes steps sequentially. If any step returns an error, execution stops immediately and returns that error:
+### `Series` and `Continue`
+
+Use `Series` for steps that depend on the step before them.
+Use `Continue` for cleanup, teardown, or checks where each step must run.
 
 ```go
 pipeline := dagger.Series(
@@ -170,13 +160,7 @@ pipeline := dagger.Series(
     dagger.NewStep(validateOrder),
     dagger.NewStep(chargePayment),
 )
-```
 
-### `Continue` (Best-Effort Sequence)
-Executes all steps in sequence regardless of errors. Encountered errors are accumulated and combined using `errors.Join`:
-
-```go
-// Ideal for teardown, multi-resource cleanup, or multi-check validations
 cleanup := dagger.Continue(
     dagger.NewStep(drainConnections),
     dagger.NewStep(deleteCloudInstances),
@@ -185,8 +169,7 @@ cleanup := dagger.Continue(
 )
 ```
 
-### `If`, `IfNot`, and `IfElse` (State Branching)
-Branch execution conditionally based on the state using a `Selector[S]` predicate (`func(state S) bool`):
+### `If`, `IfNot`, and `IfElse`
 
 ```go
 isDryRun := func(s *OrderState) bool { return s.Total == 0 }
@@ -196,24 +179,25 @@ workflow := dagger.IfElse(
     dagger.NewStep(skipPaymentProcessing),
     dagger.NewStep(processCreditCard),
 )
-```
 
-`IfNot` executes the child step only when the selector returns `false`:
-
-```go
-dagger.IfNot(
+promptIfUnpaid := dagger.IfNot(
     func(s *OrderState) bool { return s.Paid },
     dagger.NewStep(promptPayment),
 )
 ```
 
-### `Result` (Outcome & Error Routing)
-`Result` executes a `mainStep`, followed by outcome-based branch routing:
-- `dagger.OnSuccess(step)` runs if `mainStep` succeeds (`nil` error).
-- `dagger.OnError(step)` runs if `mainStep` returns an error.
-- `dagger.Switch(...)` enables multi-case pattern matching against the returned error.
+### `Result`: route on success or error
 
-#### Simple Success and Error Handling
+`Result` runs a main step, then runs a branch based on the outcome:
+
+- `dagger.OnSuccess(step)` runs when the main step returns `nil`.
+- `dagger.OnError(step)` runs when the main step returns an error.
+- `dagger.Switch(cases...)` matches the error against a list of cases.
+
+> [!NOTE]
+> You must give at least one of `OnSuccess`, `OnError`, or `Switch`.
+> You can give only `OnSuccess`, only `OnError`, or both.
+
 ```go
 deployWithNotification := dagger.Result(
     dagger.NewStep(deployService),
@@ -222,16 +206,12 @@ deployWithNotification := dagger.Result(
 )
 ```
 
-> **Note:** Either `OnSuccess`, `OnError`, or `Switch` must be provided. You can provide only `OnSuccess`, only `OnError`, or both.
-
-#### Accessing the Triggering Error (`NewResultErrStep`)
-If your failure step needs direct access to the error returned by `mainStep`, use `dagger.NewResultErrStep`:
+To read the error in the failure step, use `dagger.NewResultErrStep`:
 
 ```go
 handleFailure := dagger.NewResultErrStep(func(ctx context.Context, state *OrderState, resErr error) error {
     log.Printf("Payment failed with error: %v", resErr)
     state.Paid = false
-    // You can handle/suppress the error or return a wrapped error
     return fmt.Errorf("order %s failed: %w", state.OrderID, resErr)
 })
 
@@ -241,8 +221,12 @@ orderStep := dagger.Result(
 )
 ```
 
-#### Multi-Error Pattern Matching with `Switch` and `Case`
-`dagger.Switch` routes errors to specific recovery steps based on predicate matchers, falling back to an optional `DefaultCase`:
+When a failure step runs, `Result` returns the error from that step.
+If the failure step returns `nil`, the error is suppressed.
+
+To send different errors to different recovery steps, use `Switch` with `Case`.
+`DefaultCase` is optional. It runs when no other case matches.
+If no case matches, `Result` returns the original error.
 
 ```go
 isNetworkError := func(ctx context.Context, err error) bool {
@@ -265,25 +249,153 @@ resilientStep := dagger.Result(
 )
 ```
 
----
+### Custom steps
 
-## Middlewares & Observability
+Any type that implements `Step[S]` is a step.
+For a custom step that runs child steps, do these three things:
 
-`dagger` includes a middleware system that wraps steps with cross-cutting concerns such as distributed tracing, structured logging, retries, and telemetry metrics.
+1. Implement `Unwrap() []dagger.Step[S]`. Then cycle detection and the tree printer see the children.
+2. Implement `CanSkipMiddleware() bool` and return `true`. Then middleware can skip the wrapper itself.
+3. Wrap each child with your middleware before you run it.
+   The middleware from `dag.Use` does not reach the children of a custom step.
 
-### How Middlewares Work
+This `parallel` step runs its children at the same time and joins their errors:
 
-Middlewares are defined as `MiddlewareFunc[S]`:
+```go
+type parallel[S any] struct {
+    mw    dagger.MiddlewareChain[S]
+    steps []dagger.Step[S]
+}
+
+func (p *parallel[S]) Exec(ctx context.Context, state S) error {
+    errs := make([]error, len(p.steps))
+
+    var wg sync.WaitGroup
+    for i, step := range p.steps {
+        wg.Go(func() { errs[i] = p.mw.Wrap(step).Exec(ctx, state) })
+    }
+    wg.Wait()
+
+    return errors.Join(errs...)
+}
+
+func (p *parallel[S]) Unwrap() []dagger.Step[S] { return p.steps }
+
+func (p *parallel[S]) CanSkipMiddleware() bool { return true }
+```
+
+Give the executor and the custom step the same middleware.
+The [middleware section](#middleware-and-observability) defines `RetryMiddleware` and `OTelTraceMiddleware`.
+
+```go
+mws := []dagger.MiddlewareFunc[*DomainState]{
+    RetryMiddleware[*DomainState](3, 200*time.Millisecond, isTransient),
+    OTelTraceMiddleware[*DomainState](tracer),
+}
+
+provision := &parallel[*DomainState]{
+    mw: dagger.NewChain(mws...),
+    steps: []dagger.Step[*DomainState]{
+        dagger.NewStep(issueCertificate),
+        dagger.NewStep(configureCDN),
+        dagger.NewStep(pushEdgeConfig),
+    },
+}
+
+dag.Use(mws...)
+```
+
+> [!WARNING]
+> The children share one state value.
+> Make sure that they do not write the same fields, or protect the fields with a lock.
+
+## Real-world example: a declarative reconciler
+
+Kubernetes operators, database controllers, and cloud cluster managers run reconcile loops.
+A DAG keeps a full reconcile loop in one readable function.
+
+This example manages a distributed cluster, such as Redis or Kafka.
+It validates the desired state, provisions in steps, recovers from failures with a rollback, and tears down deleted clusters.
+
+```go
+type ClusterState struct {
+    ClusterID    string
+    Namespace    string
+    NodeCount    int
+    IsDeleted    bool
+    IsReady      bool
+    StorageClass string
+    Endpoints    []string
+}
+
+type ClusterReconciler struct {
+    k8sClient   KubeClient
+    eventLogger EventRecorder
+}
+
+func (r *ClusterReconciler) BuildDAG() (dagger.Step[*ClusterState], error) {
+    // 1. Provision and scale the cluster.
+    provisionSteps := dagger.Series(
+        dagger.NewStep(r.validateResourceQuotas),
+        dagger.NewStep(r.provisionStorageVolumes),
+        dagger.NewStep(r.deployClusterNodes),
+        dagger.NewStep(r.verifyQuorumConsensus),
+        dagger.NewStep(r.exposeClientEndpoints),
+    )
+
+    // 2. Route the result: mark ready, requeue, or roll back.
+    provisionWorkflow := dagger.Result(
+        provisionSteps,
+        dagger.OnSuccess(dagger.NewStep(r.markClusterReady)),
+        dagger.Switch[*ClusterState](
+            dagger.Case(isTransientQuotaError, dagger.NewStep(r.scheduleRequeue)),
+            dagger.DefaultCase(dagger.Continue(
+                dagger.NewStep(r.collectDiagnosticLogs),
+                dagger.NewStep(r.rollbackUnhealthyNodes),
+                dagger.NewStep(r.markClusterDegraded),
+            )),
+        ),
+    )
+
+    // 3. Tear down the cluster. Run all steps, even if one fails.
+    teardownWorkflow := dagger.Continue(
+        dagger.NewStep(r.drainClientTraffic),
+        dagger.NewStep(r.terminateClusterNodes),
+        dagger.NewStep(r.releaseStorageVolumes),
+        dagger.NewStep(r.removeFinalizer),
+    )
+
+    // 4. Top level: delete, or move toward the desired state.
+    reconcileDAG := dagger.IfElse(
+        func(s *ClusterState) bool { return s.IsDeleted },
+        teardownWorkflow,
+        dagger.IfNot(
+            func(s *ClusterState) bool { return s.IsReady },
+            provisionWorkflow,
+        ),
+    )
+
+    return reconcileDAG, nil
+}
+```
+
+For a runnable version, see [`examples/reconciler`](examples/reconciler).
+
+## Middleware and observability
+
+A middleware wraps steps to add cross-cutting behavior, such as tracing, logs, metrics, and retries.
 
 ```go
 type MiddlewareFunc[S any] func(next Step[S], info Info) Step[S]
 ```
 
-The `Info` struct provides metadata about the wrapped step:
-- `info.Name`: String representation of the step (e.g. `controller:*ClusterReconciler.deployClusterNodes`).
-- `info.CanSkip`: Indicates whether the step is an internal control-flow coordinator (`Series`, `If`, `Result`, etc.). Middleware implementations can check `if info.CanSkip` to avoid generating redundant trace spans or log entries for structural wrapper steps.
+The `Info` struct describes the wrapped step:
 
-Middlewares can be attached to the executor using `dag.Use(...)` or chained via `dagger.NewChain(...)`:
+- `info.Name` is the step name, for example `controller:*ClusterReconciler.deployClusterNodes`.
+- `info.CanSkip` is `true` for internal control-flow steps, such as `Series`, `If`, and `Result`.
+  Check it to prevent extra trace spans and log entries for these wrapper steps.
+
+Attach middleware with `dag.Use(...)`, or chain middleware with `dagger.NewChain(...)`:
 
 ```go
 dag.Use(
@@ -292,10 +404,8 @@ dag.Use(
 )
 ```
 
-### Production Examples
-
-#### 1. Distributed Tracing Middleware (OpenTelemetry / Datadog)
-Automatically create a span for each step, propagate trace context, set status, and record errors:
+This tracing middleware (OpenTelemetry or Datadog) makes one span for each step.
+It propagates the trace context, sets the span status, and records errors:
 
 ```go
 func OTelTraceMiddleware[S any](tracer trace.Tracer) dagger.MiddlewareFunc[S] {
@@ -319,8 +429,43 @@ func OTelTraceMiddleware[S any](tracer trace.Tracer) dagger.MiddlewareFunc[S] {
 }
 ```
 
-#### 2. Structured Logging Middleware (`log/slog` or `logr`)
-Log step execution, duration, and failures with contextual metadata:
+<details>
+<summary>Retry middleware</summary>
+
+This middleware runs a step again when the error is transient.
+Put it before the tracing middleware in `dag.Use`, so that each attempt gets its own span:
+
+```go
+func RetryMiddleware[S any](attempts int, backoff time.Duration, retryable func(error) bool) dagger.MiddlewareFunc[S] {
+    return func(next dagger.Step[S], info dagger.Info) dagger.Step[S] {
+        if info.CanSkip {
+            return next
+        }
+
+        return dagger.NewStep(func(ctx context.Context, state S) error {
+            for attempt := 1; ; attempt++ {
+                err := next.Exec(ctx, state)
+                if err == nil || attempt == attempts || !retryable(err) {
+                    return err
+                }
+
+                select {
+                case <-ctx.Done():
+                    return ctx.Err()
+                case <-time.After(backoff):
+                }
+            }
+        })
+    }
+}
+```
+
+</details>
+
+<details>
+<summary>Structured logging middleware (<code>log/slog</code> or <code>logr</code>)</summary>
+
+This middleware logs each step with its duration and error:
 
 ```go
 func SlogMiddleware[S any](logger *slog.Logger) dagger.MiddlewareFunc[S] {
@@ -355,8 +500,12 @@ func SlogMiddleware[S any](logger *slog.Logger) dagger.MiddlewareFunc[S] {
 }
 ```
 
-#### 3. Metrics Middleware (Prometheus / OpenTelemetry)
-Track execution duration histograms and attempt/error counters partitioned by step name:
+</details>
+
+<details>
+<summary>Metrics middleware (Prometheus or OpenTelemetry)</summary>
+
+This middleware records a duration histogram and an error counter for each step name:
 
 ```go
 func MetricsMiddleware[S any](histogram metric.Float64Histogram, errorCounter metric.Int64Counter) dagger.MiddlewareFunc[S] {
@@ -382,87 +531,100 @@ func MetricsMiddleware[S any](histogram metric.Float64Histogram, errorCounter me
 }
 ```
 
----
+</details>
 
-## Real-World Production Architecture: Declarative Reconciler
+## Visualize your DAGs
 
-In production systems (such as Kubernetes operators, distributed database controllers, or cloud cluster managers), DAGs allow you to model entire declarative reconciliation loops cleanly.
+### Interactive visualizer (`dagger` CLI)
 
-Here is a representative pattern demonstrating a distributed cluster reconciler (e.g., managing a Redis or Kafka cluster) that coordinates desired-state validation, multi-step provisioning, failure recovery with rollback, and resource teardown:
+The `dagger` CLI finds the DAGs in your code and shows them as interactive Mermaid.js flowcharts in your browser.
+It reads your source with the Go AST parser (`go/parser`, `go/ast`).
+It does not compile or run your application, and it does not need code generation.
 
-```go
-type ClusterState struct {
-    ClusterID    string
-    Namespace    string
-    NodeCount    int
-    IsDeleted    bool
-    IsReady      bool
-    StorageClass string
-    Endpoints    []string
-}
+![Dagger Interactive Visualizer](assets/dagger-view.png)
 
-type ClusterReconciler struct {
-    k8sClient   KubeClient
-    eventLogger EventRecorder
-}
+- **Fast reviews.** Reconcilers with many error branches, fallbacks, and rollbacks are hard to follow in code. A diagram shows the flow and the failure paths immediately.
+- **Pan and zoom.** Drag to pan, use the wheel to zoom at the cursor, and auto-fit the graph. Keyboard shortcuts: `+`, `-`, `0`, `f`.
+- **Mermaid export.** Copy the Mermaid source to the clipboard, or print it to `stdout`. Put it in pull requests, design documents, or Architecture Decision Records (ADRs).
+- **Layout toggle.** Switch between top-down (`TD`) and left-to-right (`LR`) layouts.
 
-func (r *ClusterReconciler) BuildDAG() (dagger.Step[*ClusterState], error) {
-    // 1. Cluster Provisioning & Scaling Pipeline
-    provisionSteps := dagger.Series(
-        dagger.NewStep(r.validateResourceQuotas),
-        dagger.NewStep(r.provisionStorageVolumes),
-        dagger.NewStep(r.deployClusterNodes),
-        dagger.NewStep(r.verifyQuorumConsensus),
-        dagger.NewStep(r.exposeClientEndpoints),
-    )
+```bash
+# Open the web dashboard (default: http://localhost:8080)
+dagger
 
-    // 2. Wrap Provisioning with Result Handling, Dynamic Error Routing & Rollback
-    provisionWorkflow := dagger.Result(
-        provisionSteps,
-        dagger.OnSuccess(dagger.NewStep(r.markClusterReady)),
-        dagger.Switch[*ClusterState](
-            dagger.Case(isTransientQuotaError, dagger.NewStep(r.scheduleRequeue)),
-            dagger.DefaultCase(dagger.Continue(
-                dagger.NewStep(r.collectDiagnosticLogs),
-                dagger.NewStep(r.rollbackUnhealthyNodes),
-                dagger.NewStep(r.markClusterDegraded),
-            )),
-        ),
-    )
+# Scan a specific directory or package
+dagger -dir ./examples/reconciler
 
-    // 3. Cluster Deletion / Teardown Pipeline
-    teardownWorkflow := dagger.Continue(
-        dagger.NewStep(r.drainClientTraffic),
-        dagger.NewStep(r.terminateClusterNodes),
-        dagger.NewStep(r.releaseStorageVolumes),
-        dagger.NewStep(r.removeFinalizer),
-    )
+# List all discovered DAGs
+dagger -list
 
-    // 4. Top-Level Reconcile DAG: Branch on Deletion vs Desired State
-    reconcileDAG := dagger.IfElse(
-        func(s *ClusterState) bool { return s.IsDeleted },
-        teardownWorkflow,
-        dagger.IfNot(
-            func(s *ClusterState) bool { return s.IsReady },
-            provisionWorkflow,
-        ),
-    )
+# Print the Mermaid flowchart of one DAG to stdout
+dagger -select BuildDAG -stdout
 
-    return reconcileDAG, nil
-}
+# Print the flowchart in left-to-right orientation
+dagger -select BuildDAG -orientation LR -stdout
+
+# Serve the dashboard on a different address
+dagger -serve :9090
 ```
 
----
+`-select` accepts a DAG index, a name, or a `file:line` substring.
+You can also run the CLI without installing it:
 
-## Step Naming & Introspection
+```bash
+go run github.com/ajatprabha/dagger/cmd/dagger@latest
+```
 
-`dagger.StepName` extracts descriptive names from any step using runtime reflection without manual naming boilerplate:
-- **Standalone Functions**: `pkg:funcName` (e.g. `controller:validateResourceQuotas`)
-- **Struct / Pointer Methods**: `pkg:*Type.Method` (e.g. `controller:*ClusterReconciler.deployClusterNodes`)
-- **Generic Step Types**: `pkg:StepType[StateType]` (e.g. `dagger:ifStep[*ClusterState]`)
+### Tree printer (`Print`, `PrintString`)
 
-### Custom Step Names
-If you want to customize how a step is identified (in traces, logs, and DAG visualizations), implement the `dagger.Namer` interface or provide a `StepName() string` method:
+`dagger.Print` writes the graph as a tree to `stdout` or to an `io.Writer`.
+`dagger.PrintString` returns the tree as a string.
+Use them to log the workflow at startup, to debug a graph, or to assert the layout in unit tests.
+
+```go
+fmt.Println(dagger.PrintString(pipeline))
+```
+
+```text
+dagger:seriesStep[*ClusterState]
+    ├── controller:*ClusterReconciler.validateResourceQuotas
+    ├── controller:*ClusterReconciler.provisionStorageVolumes
+    └── dagger:resultStep[*ClusterState]
+        ├── controller:*ClusterReconciler.deployClusterNodes [main]
+        ├── controller:*ClusterReconciler.markClusterReady [success]
+        └── controller:*ClusterReconciler.rollbackUnhealthyNodes [failure]
+```
+
+> [!NOTE]
+> Give the root step to the printer, not the `*Executor`.
+
+Options change the output:
+
+```go
+dagger.Print(pipeline,
+    dagger.WithWriter(os.Stdout), // Custom io.Writer (default: os.Stdout)
+    dagger.WithCompactSymbols(),  // Compact ASCII symbols (|- , `- )
+    dagger.WithIndent("  "),      // Custom indent string (default: "    ")
+    dagger.WithReferences(),      // Add a "(ref)" marker to shared, reused nodes
+    dagger.WithoutLabels(),       // Hide the [main], [success], [failure] labels
+)
+```
+
+To set your own tree symbols, use `dagger.WithSymbols`.
+
+## Step names
+
+`dagger.StepName` uses reflection to get a readable name for each step.
+You do not write names by hand.
+
+| Step kind | Format | Example |
+| --- | --- | --- |
+| Function | `pkg:funcName` | `controller:validateResourceQuotas` |
+| Method | `pkg:*Type.Method` | `controller:*ClusterReconciler.deployClusterNodes` |
+| Generic step type | `pkg:StepType[StateType]` | `dagger:ifStep[*ClusterState]` |
+
+Traces, logs, the tree printer, and the visualizer use these names.
+To set a custom name, implement `dagger.Namer` (`StepName() fmt.Stringer`), or add a `StepName() string` method:
 
 ```go
 type ProvisionStorageStep struct{}
@@ -476,116 +638,15 @@ func (p ProvisionStorageStep) Exec(ctx context.Context, state *ClusterState) err
 }
 ```
 
----
-
-## Visualizing the DAG
-
-`dagger` provides both an **interactive web visualizer (CLI)** and an **in-terminal ASCII/Unicode tree printer** to inspect and communicate pipeline topologies.
-
-### 1. Interactive Web Visualizer & CLI (`cmd/dagger`)
-
-The `cmd/dagger` CLI tool uses Go's standard library AST parser (`go/parser`, `go/ast`) to statically discover all DAG definitions in your codebase and serve an interactive visualizer powered by Mermaid.js:
-
-![Dagger Interactive Visualizer](assets/dagger-view.png)
-
-#### Why Visualization is Helpful:
-- **Architectural Clarity & Rapid Review**: Complex production workflows—especially declarative reconcilers with multi-branch error recovery, fallbacks, and conditional rollbacks—can be difficult to trace through raw code alone. A visual graph makes execution flow, dependencies, and failure branches immediately obvious.
-- **Zero-Configuration Static AST Discovery**: Pure Go standard library—no new dependencies, no code generation, and no need to compile or run your application. Just run `dagger` in your project directory.
-- **Interactive Canvas with Pan & Zoom**: Smooth mouse-drag panning, cursor-centered wheel zooming, auto-fit, and keyboard shortcuts (`+`, `-`, `0`, `f`) let you navigate enterprise-scale pipelines with ease.
-- **One-Click Mermaid Export**: Copy the raw Mermaid flowchart template directly to your clipboard or print it to `stdout` to embed into Pull Request descriptions, design proposals, or Architecture Decision Records (ADRs).
-- **Layout Toggles**: Switch between Top-Down (`TD`) and Left-to-Right (`LR`) layouts to fit the shape of your pipeline.
-
-#### Installation:
-
-Install the standalone `dagger` CLI binary using `go install`:
-
-```bash
-go install github.com/ajatprabha/dagger/cmd/dagger@latest
-```
-
-#### CLI Commands:
-
-```bash
-# Launch the interactive web dashboard (defaults to http://localhost:8080)
-dagger
-
-# Scan a specific directory or package
-dagger -dir ./examples/reconciler
-
-# List all discovered DAGs across the codebase
-dagger -list
-
-# Output raw Mermaid flowchart directly to stdout
-dagger -select BuildDAG -stdout
-
-# Output Mermaid in Left-to-Right orientation
-dagger -select BuildDAG -orientation LR -stdout
-```
-
-Alternatively, you can run it directly without installing:
-
-```bash
-go run github.com/ajatprabha/dagger/cmd/dagger@latest
-```
-
----
-
-### 2. In-Terminal Tree Printer (`Print`, `PrintString`)
-
-You can also print the entire graph topology to `stdout`, logs, or a string using `dagger.Print` or `dagger.PrintString`. This is especially useful for logging pipeline structures at application startup, debugging complex graphs, or verifying graph layout in unit tests:
-
-```go
-dagTree := dagger.PrintString(pipeline)
-fmt.Println(dagTree)
-```
-
-Example rendered tree output:
-
-```text
-dagger:seriesStep[*ClusterState]
-    ├── controller:*ClusterReconciler.validateResourceQuotas
-    ├── controller:*ClusterReconciler.provisionStorageVolumes
-    └── dagger:resultStep[*ClusterState]
-        ├── controller:*ClusterReconciler.deployClusterNodes [main]
-        ├── controller:*ClusterReconciler.markClusterReady [success]
-        └── controller:*ClusterReconciler.rollbackUnhealthyNodes [failure]
-```
-
-#### Printer Customization Options
-
-The printer accepts functional options for styling:
-
-```go
-dagger.Print(dag,
-    dagger.WithWriter(os.Stdout),    // Custom io.Writer (default: os.Stdout)
-    dagger.WithCompactSymbols(),     // Compact ASCII symbols (|- , `- )
-    dagger.WithIndent("  "),         // Custom indent string (default: "    ")
-    dagger.WithReferences(),         // Append "(ref)" marker for shared/reused nodes
-    dagger.WithoutLabels(),          // Hide [main], [success], [failure] branch labels
-)
-```
-
----
-
-## Cycle Detection
-
-`dagger` guarantees that workflows are strictly acyclic. During `dagger.New`, the entire tree is traversed to ensure no step references an ancestor. If a cycle is detected, initialization fails immediately with `*dagger.ErrCycle`:
-
-```go
-dag, err := dagger.New(rootStep)
-if err != nil {
-    var cycleErr *dagger.ErrCycle
-    if errors.As(err, &cycleErr) {
-        log.Fatalf("Graph validation error: %v", cycleErr)
-    }
-}
-```
-
----
-
 ## Documentation
 
-- [Go Package Documentation][api-docs]
+- [Go package documentation][api-docs]
+- [Runnable examples](example_test.go)
+- [Reconciler example](examples/reconciler)
+
+## License
+
+`dagger` is available under the [Apache License 2.0](LICENSE).
 
 [github-workflow-badge]: https://github.com/ajatprabha/dagger/workflows/test/badge.svg
 [github-workflow]: https://github.com/ajatprabha/dagger/actions?query=workflow%3Atest
@@ -596,4 +657,3 @@ if err != nil {
 [go-report-card-badge]: https://goreportcard.com/badge/github.com/ajatprabha/dagger
 [go-report-card]: https://goreportcard.com/report/github.com/ajatprabha/dagger
 [api-docs]: https://pkg.go.dev/github.com/ajatprabha/dagger
-
