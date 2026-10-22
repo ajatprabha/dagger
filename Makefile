@@ -43,7 +43,7 @@ test-xml: test-cov gocov-xml
 
 ## Determine the golangci-lint version based on $(GO_MINOR_VERSION)
 GOLANGCI_LINT_PKG := github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-GOLANGCI_LINT_DEFAULT := v2.13.2
+GOLANGCI_LINT_DEFAULT := v2.15.0
 GOLANGCI_LINT_V25 := v2.12.2
 
 get-golangci-lint-version = $(or $(value GOLANGCI_LINT_V$(1)), $(GOLANGCI_LINT_DEFAULT))
