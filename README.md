@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner/dagger-banner.png" alt="dagger: a trace of one workflow. Steps run in series, a custom parallel step runs three steps at the same time, a transient DNS error is retried, and a rate-limit error is routed to a recovery step." width="100%">
+</p>
+
 # dagger
 
 [![test][github-workflow-badge]][github-workflow]
@@ -12,14 +16,13 @@ You write each step as a plain Go function.
 `dagger` connects the steps with sequence, branch, and error-routing primitives.
 You get a workflow that is easy to read, test, observe, and review.
 
-![Dagger Interactive Visualizer](assets/dagger-view.png)
-
 ## Why dagger?
 
 - **Flat, declarative flow.** Declare the flow once. Do not write deeply nested `if` and `if err != nil` blocks.
 - **Type-safe state.** Go generics (`Step[S]`) carry your state type through all steps. You do not need `any` casts.
 - **Validated before it runs.** `dagger.New` rejects cycles and invalid graphs before the first step starts.
 - **Observability in one place.** One middleware adds tracing, logs, metrics, or retries to every step.
+- **Extensible.** Write your own control-flow step, such as a parallel step. Middleware and the printer still see its children.
 - **Automatic step names.** `dagger` gets readable names from your functions and methods. Traces and logs use these names.
 - **A diagram of your code.** Print the graph as a tree, or open an interactive diagram with the `dagger` CLI.
 - **No runtime dependencies.** The library and the CLI use only the Go standard library.
@@ -246,6 +249,41 @@ resilientStep := dagger.Result(
 )
 ```
 
+### Custom steps
+
+Any type that implements `Step[S]` is a step.
+A custom step that runs child steps must do three things:
+
+1. Run each child with `dagger.ExecStep`, not with `child.Exec`. Then the middleware also wraps the children.
+2. Implement `Unwrap() []dagger.Step[S]`. Then cycle detection and the tree printer see the children.
+3. Implement `CanSkipMiddleware() bool` and return `true`. Then middleware can skip the wrapper itself.
+
+This `parallel` step runs its children at the same time and joins their errors:
+
+```go
+type parallel[S any] struct{ steps []dagger.Step[S] }
+
+func (p *parallel[S]) Exec(ctx context.Context, state S) error {
+    errs := make([]error, len(p.steps))
+
+    var wg sync.WaitGroup
+    for i, step := range p.steps {
+        wg.Go(func() { errs[i] = dagger.ExecStep(ctx, step, state) })
+    }
+    wg.Wait()
+
+    return errors.Join(errs...)
+}
+
+func (p *parallel[S]) Unwrap() []dagger.Step[S] { return p.steps }
+
+func (p *parallel[S]) CanSkipMiddleware() bool { return true }
+```
+
+> [!WARNING]
+> The children share one state value.
+> Make sure that they do not write the same fields, or protect the fields with a lock.
+
 ## Real-world example: a declarative reconciler
 
 Kubernetes operators, database controllers, and cloud cluster managers run reconcile loops.
@@ -367,6 +405,39 @@ func OTelTraceMiddleware[S any](tracer trace.Tracer) dagger.MiddlewareFunc[S] {
 ```
 
 <details>
+<summary>Retry middleware</summary>
+
+This middleware runs a step again when the error is transient.
+Put it before the tracing middleware in `dag.Use`, so that each attempt gets its own span:
+
+```go
+func RetryMiddleware[S any](attempts int, backoff time.Duration, retryable func(error) bool) dagger.MiddlewareFunc[S] {
+    return func(next dagger.Step[S], info dagger.Info) dagger.Step[S] {
+        if info.CanSkip {
+            return next
+        }
+
+        return dagger.NewStep(func(ctx context.Context, state S) error {
+            for attempt := 1; ; attempt++ {
+                err := next.Exec(ctx, state)
+                if err == nil || attempt == attempts || !retryable(err) {
+                    return err
+                }
+
+                select {
+                case <-ctx.Done():
+                    return ctx.Err()
+                case <-time.After(backoff):
+                }
+            }
+        })
+    }
+}
+```
+
+</details>
+
+<details>
 <summary>Structured logging middleware (<code>log/slog</code> or <code>logr</code>)</summary>
 
 This middleware logs each step with its duration and error:
@@ -444,6 +515,8 @@ func MetricsMiddleware[S any](histogram metric.Float64Histogram, errorCounter me
 The `dagger` CLI finds the DAGs in your code and shows them as interactive Mermaid.js flowcharts in your browser.
 It reads your source with the Go AST parser (`go/parser`, `go/ast`).
 It does not compile or run your application, and it does not need code generation.
+
+![Dagger Interactive Visualizer](assets/dagger-view.png)
 
 - **Fast reviews.** Reconcilers with many error branches, fallbacks, and rollbacks are hard to follow in code. A diagram shows the flow and the failure paths immediately.
 - **Pan and zoom.** Drag to pan, use the wheel to zoom at the cursor, and auto-fit the graph. Keyboard shortcuts: `+`, `-`, `0`, `f`.
