@@ -22,7 +22,7 @@ You get a workflow that is easy to read, test, observe, and review.
 - **Type-safe state.** Go generics (`Step[S]`) carry your state type through all steps. You do not need `any` casts.
 - **Validated before it runs.** `dagger.New` rejects cycles and invalid graphs before the first step starts.
 - **Observability in one place.** One middleware adds tracing, logs, metrics, or retries to every step.
-- **Extensible.** Write your own control-flow step, such as a parallel step. Middleware and the printer still see its children.
+- **Extensible.** Write your own control-flow step, such as a parallel step.
 - **Automatic step names.** `dagger` gets readable names from your functions and methods. Traces and logs use these names.
 - **A diagram of your code.** Print the graph as a tree, or open an interactive diagram with the `dagger` CLI.
 - **No runtime dependencies.** The library and the CLI use only the Go standard library.
@@ -252,23 +252,27 @@ resilientStep := dagger.Result(
 ### Custom steps
 
 Any type that implements `Step[S]` is a step.
-A custom step that runs child steps must do three things:
+For a custom step that runs child steps, do these three things:
 
-1. Run each child with `dagger.ExecStep`, not with `child.Exec`. Then the middleware also wraps the children.
-2. Implement `Unwrap() []dagger.Step[S]`. Then cycle detection and the tree printer see the children.
-3. Implement `CanSkipMiddleware() bool` and return `true`. Then middleware can skip the wrapper itself.
+1. Implement `Unwrap() []dagger.Step[S]`. Then cycle detection and the tree printer see the children.
+2. Implement `CanSkipMiddleware() bool` and return `true`. Then middleware can skip the wrapper itself.
+3. Wrap each child with your middleware before you run it.
+   The middleware from `dag.Use` does not reach the children of a custom step.
 
 This `parallel` step runs its children at the same time and joins their errors:
 
 ```go
-type parallel[S any] struct{ steps []dagger.Step[S] }
+type parallel[S any] struct {
+    mw    dagger.MiddlewareChain[S]
+    steps []dagger.Step[S]
+}
 
 func (p *parallel[S]) Exec(ctx context.Context, state S) error {
     errs := make([]error, len(p.steps))
 
     var wg sync.WaitGroup
     for i, step := range p.steps {
-        wg.Go(func() { errs[i] = dagger.ExecStep(ctx, step, state) })
+        wg.Go(func() { errs[i] = p.mw.Wrap(step).Exec(ctx, state) })
     }
     wg.Wait()
 
@@ -278,6 +282,27 @@ func (p *parallel[S]) Exec(ctx context.Context, state S) error {
 func (p *parallel[S]) Unwrap() []dagger.Step[S] { return p.steps }
 
 func (p *parallel[S]) CanSkipMiddleware() bool { return true }
+```
+
+Give the executor and the custom step the same middleware.
+The [middleware section](#middleware-and-observability) defines `RetryMiddleware` and `OTelTraceMiddleware`.
+
+```go
+mws := []dagger.MiddlewareFunc[*DomainState]{
+    RetryMiddleware[*DomainState](3, 200*time.Millisecond, isTransient),
+    OTelTraceMiddleware[*DomainState](tracer),
+}
+
+provision := &parallel[*DomainState]{
+    mw: dagger.NewChain(mws...),
+    steps: []dagger.Step[*DomainState]{
+        dagger.NewStep(issueCertificate),
+        dagger.NewStep(configureCDN),
+        dagger.NewStep(pushEdgeConfig),
+    },
+}
+
+dag.Use(mws...)
 ```
 
 > [!WARNING]
