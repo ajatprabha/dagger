@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/banner/dagger-banner.png" alt="dagger: a trace of one workflow. Steps run in series, a custom parallel step runs three steps at the same time, a transient DNS error is retried, and a rate-limit error is routed to a recovery step." width="100%">
-</p>
-
 # dagger
 
 [![test][github-workflow-badge]][github-workflow]
@@ -15,6 +11,10 @@
 You write each step as a plain Go function.
 `dagger` connects the steps with sequence, branch, and error-routing primitives.
 You get a workflow that is easy to read, test, observe, and review.
+
+<p align="center">
+  <img src="assets/banner/dagger-banner.png" alt="dagger: a trace of one workflow. Steps run in series, a custom parallel step runs three steps at the same time, a transient DNS error is retried, and a rate-limit error is routed to a recovery step." width="100%">
+</p>
 
 ## Why dagger?
 
